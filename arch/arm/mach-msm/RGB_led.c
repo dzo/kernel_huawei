@@ -1,4 +1,3 @@
-/*BU5D08276 sibingsong 20100420 begin*/
 /*add led driver*/
 #include <linux/module.h>
 #include <linux/moduleparam.h>
@@ -21,9 +20,8 @@
 #define MPP_BLUE "mpp20"
 #define MAX_BACKLIGHT_BRIGHTNESS 255
 #define LED_OFF 0
-/*<BU5D10119 sibingsong 20100518 begin*/
 #define LEVEL 2
-/*BU5D10119 sibingsong 20100518 end>*/
+/* #define RGB_DEBUG 1 */
 #ifdef RGB_DEBUG
 #define RGB_PRINT(x...) do{ \
 		printk(KERN_INFO "[RGB_LED] "x); \
@@ -31,30 +29,54 @@
 #else
 #define RGB_PRINT(x...) do{}while(0)
 #endif
+
+static int tocurrent(enum led_brightness value) {
+	if(value==LED_OFF)
+		return 0;
+	return 2;
+/*	if(value<=LED_HALF) // Only 0 and 2 work
+		return 1;
+	return 2;
+*/
+}
+static int red_blink=0;
+
+static int led_vals[3]={0,0,0};
+
+static int off_when_suspended=1;
+
+static int backlight_notification=0;
+
+module_param(off_when_suspended,int,00644);
+
+module_param(backlight_notification,int,00644);
+
 static void set_red_brightness(struct led_classdev *led_cdev,
 					enum led_brightness value)
 {
 	int ret = 0;
 
 	RGB_PRINT("%s: value = %d\n",__func__, value);
-	ret = pmic_set_low_current_led_intensity(PM_LOW_CURRENT_LED_DRV0, (!!value)? LEVEL : 0);
-
+	led_vals[0]=tocurrent(value);
+	ret = pmic_set_low_current_led_intensity(PM_LOW_CURRENT_LED_DRV0, led_vals[0]);
 	if(ret)
 	{
 		RGB_PRINT("%s: failed\n",__func__);
 		return;
 	}
-
+	red_blink=0;
 	RGB_PRINT("%s: success\n",__func__);
 }
+
 
 static void set_green_brightness(struct led_classdev *led_cdev,
 					enum led_brightness value)
 {
 	int ret = 0;
-	
+
 	RGB_PRINT("%s: value = %d\n",__func__, value);	
-	ret = pmic_set_low_current_led_intensity(PM_LOW_CURRENT_LED_DRV1, (!!value)? LEVEL : 0);
+	led_vals[1]=tocurrent(value);
+	ret = pmic_set_low_current_led_intensity(PM_LOW_CURRENT_LED_DRV1, led_vals[1]);
 	if(ret)
 	{
 		RGB_PRINT("%s: failed\n",__func__);
@@ -70,8 +92,10 @@ static void set_blue_brightness(struct led_classdev *led_cdev,
 {
 	int ret = 0;
 	
+	led_cdev->brightness = value;
 	RGB_PRINT("%s: value = %d\n",__func__, value);	
-	ret = pmic_set_low_current_led_intensity(PM_LOW_CURRENT_LED_DRV2, (!!value)? LEVEL : 0);
+	led_vals[2]=tocurrent(value);
+	ret = pmic_set_low_current_led_intensity(PM_LOW_CURRENT_LED_DRV2, led_vals[2]);
 	if(ret)
 	{
 		RGB_PRINT("%s: failed\n",__func__);
@@ -81,8 +105,32 @@ static void set_blue_brightness(struct led_classdev *led_cdev,
 	RGB_PRINT("%s: success\n",__func__);
 }
 
+static ssize_t led_blink_store(struct device *dev,
+                                   struct device_attribute *attr,
+                                   const char *buf, size_t count)
+{
+	int val;
+	sscanf(buf, "%u", &val);
+	printk("Blink %d",val);
+/*
+	if(val==1) {
+		red_blink=1;
+		pmic_set_low_current_led_intensity(PM_LOW_CURRENT_LED_DRV0, 2);
+	} else {
+		red_blink=0;
+		pmic_set_low_current_led_intensity(PM_LOW_CURRENT_LED_DRV0, 0);
+	}
+*/
+	return count;
+}
+
+
+static DEVICE_ATTR(blink, 0644, NULL,
+                                led_blink_store);
+
 static int rgb_leds_probe(struct platform_device *pdev)
-{
+{
+
 	int rc = -ENODEV;
 	
 	struct led_classdev *p_rgb_data = NULL;
@@ -127,6 +175,10 @@ static int rgb_leds_probe(struct platform_device *pdev)
 		printk(KERN_ERR "rbg blue: led_classdev_register failed\n");
 		goto err_led2_classdev_register_failed;
 	}
+	rc=device_create_file(&pdev->dev,&dev_attr_blink);
+	if (rc < 0) {
+                printk(KERN_ERR "blink file creation failed\n");
+	}
 
 	RGB_PRINT("led_classdev_register sucess\n");
 	
@@ -141,8 +193,31 @@ err_alloc_failed:
 	return rc;
 
 }
+static int rgb_leds_suspend(struct platform_device *pdev, pm_message_t state)
+{
+	// turn all the leds off
+	if(off_when_suspended  || backlight_notification) {
+        	pmic_set_low_current_led_intensity(PM_LOW_CURRENT_LED_DRV0, 0);
+		pmic_set_low_current_led_intensity(PM_LOW_CURRENT_LED_DRV1, 0);
+		pmic_set_low_current_led_intensity(PM_LOW_CURRENT_LED_DRV2, 0);
+	}
+        return 0;
+}
+
+static int rgb_leds_resume(struct platform_device *pdev)
+{
+	if(off_when_suspended || backlight_notification) {
+		pmic_set_low_current_led_intensity(PM_LOW_CURRENT_LED_DRV0, led_vals[0]);
+		pmic_set_low_current_led_intensity(PM_LOW_CURRENT_LED_DRV1, led_vals[1]);
+		pmic_set_low_current_led_intensity(PM_LOW_CURRENT_LED_DRV2, led_vals[2]);
+	}
+        return 0;  
+}
+
 static struct platform_driver rgb_leds_driver = {
 	.probe = rgb_leds_probe,
+	.suspend = rgb_leds_suspend,
+	.resume = rgb_leds_resume,
 	.driver = {
 		   .name = "rgb-leds",
 		   },
@@ -163,5 +238,3 @@ static void __exit rgb_leds_exit(void)
 
 module_init(rgb_leds_init);
 module_exit(rgb_leds_exit);
-/*BU5D08276 sibingsong 20100420 end>*/
-
