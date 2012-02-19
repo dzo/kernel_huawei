@@ -43,7 +43,7 @@ static int red_blink=0;
 
 static int led_vals[3]={0,0,0};
 
-static int off_when_suspended=1;
+static int off_when_suspended=0;
 
 static int backlight_notification=0;
 
