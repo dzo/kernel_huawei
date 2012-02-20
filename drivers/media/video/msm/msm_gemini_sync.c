@@ -20,6 +20,9 @@
 #include <linux/list.h>
 #include <linux/uaccess.h>
 #include <linux/slab.h>
+
+//#define MSM_GEMINI_DEBUG 1
+
 #include <media/msm_gemini.h>
 #include "msm_gemini_sync.h"
 #include "msm_gemini_core.h"
@@ -463,8 +466,13 @@ int msm_gemini_input_buf_enqueue(struct msm_gemini_device *pgmn_dev,
 		return -1;
 	}
 
-	GMN_DBG("%s:%d] 0x%08x %d\n", __func__, __LINE__,
-		(int) buf_cmd.vaddr, buf_cmd.y_len);
+	printk("%s:%d] 0x%08x %x %x %x %x %x\n", __func__, __LINE__,
+		(int) buf_cmd.vaddr, buf_cmd.y_off, buf_cmd.y_len, buf_cmd.cbcr_off, buf_cmd.cbcr_len, buf_cmd.num_of_mcu_rows);
+
+	if(buf_cmd.y_len==0x4d3400) {
+		buf_cmd.y_len=0x4CE300;
+		buf_cmd.cbcr_len=buf_cmd.y_len/2;
+	}
 
 	buf_p->y_buffer_addr    = msm_gemini_platform_v2p(buf_cmd.fd,
 		buf_cmd.y_len + buf_cmd.cbcr_len, &buf_p->file);
@@ -652,6 +660,7 @@ int msm_gemini_ioctl_hw_cmds(struct msm_gemini_device *pgmn_dev,
 		}
 	}
 	kfree(hw_cmds_p);
+
 	return 0;
 }
 
@@ -825,4 +834,3 @@ int __msm_gemini_exit(struct msm_gemini_device *pgmn_dev)
 	kfree(pgmn_dev);
 	return 0;
 }
-
