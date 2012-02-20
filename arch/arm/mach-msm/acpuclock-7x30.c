@@ -82,7 +82,6 @@ struct clkctl_acpu_speed {
 	unsigned int	axi_clk_hz;
 	unsigned int	vdd_mv;
 	unsigned int	vdd_raw;
-	uint32_t  	msmc1;
 	struct pll	*pll_rate;
 	unsigned long	lpj; /* loops_per_jiffy */
 };
@@ -115,28 +114,28 @@ static struct pll pll2_tbl[] = {
  * know all the h/w requirements.
  */
 static struct clkctl_acpu_speed acpu_freq_tbl[] = {
-	{ 0, 24576,  SRC_LPXO, 0, 0,  30720000,  900, VDD_RAW(900), LOW },
-	{ 0, 61440,  PLL_3,    5, 11, 61440000,  900, VDD_RAW(900), LOW },
-	{ 1, 122880, PLL_3,    5, 5,  61440000,  900, VDD_RAW(900), LOW },
-	{ 0, 184320, PLL_3,    5, 4,  61440000,  900, VDD_RAW(900), LOW },
-	{ 1, MAX_AXI_KHZ, SRC_AXI, 1, 0, 61440000, 900, VDD_RAW(900), LOW },
-	{ 1, 245760, PLL_3,    5, 2,  61440000,  900, VDD_RAW(900), LOW },
-	{ 1, 368640, PLL_3,    5, 1,  122800000, 900, VDD_RAW(900), LOW },
-	{ 1, 480000,  PLL_2,    3, 0,    122800000, 900,  VDD_RAW(900),  NOMINAL, &pll2_tbl[0]},
-	{ 1, 600000,  PLL_2,    3, 0,    122800000, 925,  VDD_RAW(925),  NOMINAL, &pll2_tbl[1]},
+	{ 0, 24576,  SRC_LPXO, 0, 0,  30720000,  900, VDD_RAW(900) },
+	{ 0, 61440,  PLL_3,    5, 11, 61440000,  900, VDD_RAW(900) },
+	{ 1, 122880, PLL_3,    5, 5,  61440000,  900, VDD_RAW(900) },
+	{ 0, 184320, PLL_3,    5, 4,  61440000,  900, VDD_RAW(900) },
+	{ 1, MAX_AXI_KHZ, SRC_AXI, 1, 0, 61440000, 900, VDD_RAW(900) },
+	{ 1, 245760, PLL_3,    5, 2,  61440000,  900, VDD_RAW(900) },
+	{ 1, 368640, PLL_3,    5, 1,  122800000, 900, VDD_RAW(900) },
+	{ 1, 480000,  PLL_2,    3, 0,    122800000, 900,  VDD_RAW(900),  &pll2_tbl[0]},
+	{ 1, 600000,  PLL_2,    3, 0,    122800000, 925,  VDD_RAW(925),  &pll2_tbl[1]},
 	/* AXI has MSMC1 implications. See above. */
-	{ 1, 768000, PLL_1,    2, 0,  153600000, 1050, VDD_RAW(1050), NOMINAL },
+	{ 1, 768000, PLL_1,    2, 0,  153600000, 1050, VDD_RAW(1050) },
 	/*
 	 * AXI has MSMC1 implications. See above.
 	 */
-	{ 1, 806400,  PLL_2, 3, 0, UINT_MAX, 1100, VDD_RAW(1100), NOMINAL, &pll2_tbl[2]},
-	{ 1, 1024000, PLL_2, 3, 0, UINT_MAX, 1200, VDD_RAW(1200), NOMINAL, &pll2_tbl[3]},
-	{ 1, 1200000, PLL_2, 3, 0, UINT_MAX, 1200, VDD_RAW(1200), NOMINAL, &pll2_tbl[4]},
-	{ 1, 1401600, PLL_2, 3, 0, UINT_MAX, 1250, VDD_RAW(1250), NOMINAL, &pll2_tbl[5]},
-	{ 1, 1516800, PLL_2, 3, 0, UINT_MAX, 1300, VDD_RAW(1300), NOMINAL, &pll2_tbl[6]},
-	{ 1, 1612800, PLL_2, 3, 0, UINT_MAX, 1350, VDD_RAW(1350), NOMINAL, &pll2_tbl[7]},
-	{ 1, 1708800, PLL_2, 3, 0, UINT_MAX, 1400, VDD_RAW(1400), NOMINAL, &pll2_tbl[8]},
-	{ 1, 1804800, PLL_2, 3, 0, UINT_MAX, 1425, VDD_RAW(1425), NOMINAL, &pll2_tbl[9]},
+	{ 1, 806400,  PLL_2, 3, 0, UINT_MAX, 1100, VDD_RAW(1100), &pll2_tbl[2]},
+	{ 1, 1024000, PLL_2, 3, 0, UINT_MAX, 1200, VDD_RAW(1200), &pll2_tbl[3]},
+	{ 1, 1200000, PLL_2, 3, 0, UINT_MAX, 1200, VDD_RAW(1200), &pll2_tbl[4]},
+	{ 1, 1401600, PLL_2, 3, 0, UINT_MAX, 1250, VDD_RAW(1250), &pll2_tbl[5]},
+	{ 1, 1516800, PLL_2, 3, 0, UINT_MAX, 1300, VDD_RAW(1300), &pll2_tbl[6]},
+	{ 1, 1612800, PLL_2, 3, 0, UINT_MAX, 1350, VDD_RAW(1350), &pll2_tbl[7]},
+	{ 1, 1708800, PLL_2, 3, 0, UINT_MAX, 1400, VDD_RAW(1400), &pll2_tbl[8]},
+	{ 1, 1804800, PLL_2, 3, 0, UINT_MAX, 1425, VDD_RAW(1425), &pll2_tbl[9]},
 	{ 0 }
 };
 
@@ -238,14 +237,6 @@ int acpuclk_set_rate(int cpu, unsigned long rate, enum setrate_reason reason)
 
 	if (reason == SETRATE_CPUFREQ) {
 		/* Increase VDD if needed. */
-		if (tgt_s->msmc1 > strt_s->msmc1) {
-			rc = vote_msmc1(tgt_s->msmc1);
-			if (rc) {
-				pr_err("Failed to vote for MSMC1\n");
-				goto out;
-			}
-			unvote_msmc1(strt_s->msmc1);
-		}
 		if (tgt_s->vdd_mv > strt_s->vdd_mv) {
 			rc = acpuclk_set_acpu_vdd(tgt_s);
 			if (rc < 0) {
@@ -325,13 +316,6 @@ int acpuclk_set_rate(int cpu, unsigned long rate, enum setrate_reason reason)
 		if (res)
 			pr_warning("ACPU VDD decrease to %d mV failed (%d)\n",
 					tgt_s->vdd_mv, res);
-	}
-	if (tgt_s->msmc1 < strt_s->msmc1) {
-		res = vote_msmc1(tgt_s->msmc1);
-		if (res)
-			pr_err("Failed to vote for MSMC1\n");
-		else
-			unvote_msmc1(strt_s->msmc1);
 	}
 
 	dprintk("ACPU speed change complete\n");
