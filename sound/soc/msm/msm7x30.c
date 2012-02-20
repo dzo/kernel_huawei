@@ -219,7 +219,7 @@ static int msm_voice_info(struct snd_kcontrol *kcontrol,
 	uinfo->type = SNDRV_CTL_ELEM_TYPE_INTEGER;
 	uinfo->count = 3; /* Device */
 
-	uinfo->value.integer.min = 1;
+	uinfo->value.integer.min = 0;
 	uinfo->value.integer.max = msm_snddev_devcount();
 	return 0;
 }
@@ -268,11 +268,11 @@ static int msm_voice_put(struct snd_kcontrol *kcontrol,
   
 	// replace headset mic with speaker_mono_tx (speakerphone mic)
 	if (headset_mic_switch && tx_dev_id == 3)
-	  tx_dev_id = 10;
+	  tx_dev_id = 12;
 	
-	// replace speaker_dual_mic_broadside_tx dev_id:12 with speaker_mono_tx (10)
-	if (speakerphone_echo_fix && tx_dev_id == 12)
-	  tx_dev_id = 10;
+	// replace speaker_dual_mic_broadside_tx dev_id:15 with speaker_mono_tx (12)
+	if (speakerphone_echo_fix && tx_dev_id == 15)
+	  tx_dev_id = 12;
 	
 	tx_dev_info = audio_dev_ctrl_find_dev(tx_dev_id);
 
