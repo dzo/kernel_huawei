@@ -25,7 +25,7 @@
 #define PM_GPIO26_PWM_ID  2
 #define ADD_VALUE			4
 #define PWM_LEVEL_ADJUST	226
-#define BL_MIN_LEVEL 	    15
+#define BL_MIN_LEVEL 	    5
 static struct pwm_device *bl_pwm;
 boolean first_set_bl = TRUE;
 static struct msm_fb_data_type *mfd_local;
