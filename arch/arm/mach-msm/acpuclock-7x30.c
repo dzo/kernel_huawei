@@ -85,10 +85,16 @@ static struct clock_state drv_state = { 0 };
 static struct clkctl_acpu_speed *backup_s;
 
 static struct pll pll2_tbl[] = {
-	{  42, 0, 1, 0 }, /*  806 MHz */
+	{  25, 0, 1, 0 }, /* 480 MHz */
+	{  31, 1, 4, 0 }, /* 600 MHz */
+	{  42, 0, 1, 0 }, /* 806 MHz */
 	{  53, 1, 3, 0 }, /* 1024 MHz */
 	{ 125, 0, 1, 1 }, /* 1200 MHz */
 	{  73, 0, 1, 0 }, /* 1401 MHz */
+	{  79, 0, 1, 0 }, /* 1516 MHz */
+	{  84, 0, 1, 0 }, /* 1612 MHz */
+	{  89, 0, 1, 0 }, /* 1708 MHz */
+	{  94, 0, 1, 0 }, /* 1804 MHz */
 };
 
 /* Use negative numbers for sources that can't be enabled/disabled */
@@ -119,15 +125,21 @@ static struct clkctl_acpu_speed acpu_freq_tbl[] = {
 	{ 0, MAX_AXI_KHZ, AXI, 1, 0, 61440000, 900, VDD_RAW(900) },
 	{ 1, 245760, PLL_3,    5, 2,  61440000,  900, VDD_RAW(900) },
 	{ 1, 368640, PLL_3,    5, 1,  122800000, 900, VDD_RAW(900) },
+	{ 0, 480000,  PLL_2,    3, 0,    122800000, 900,  VDD_RAW(900),  &pll2_tbl[0]},
+	{ 0, 600000,  PLL_2,    3, 0,    122800000, 925,  VDD_RAW(925),  &pll2_tbl[1]},
 	/* AXI has MSMC1 implications. See above. */
 	{ 1, 768000, PLL_1,    2, 0,  153600000, 1050, VDD_RAW(1050) },
 	/*
 	 * AXI has MSMC1 implications. See above.
 	 */
-	{ 1, 806400,  PLL_2, 3, 0, UINT_MAX, 1100, VDD_RAW(1100), &pll2_tbl[0]},
-	{ 1, 1024000, PLL_2, 3, 0, UINT_MAX, 1200, VDD_RAW(1200), &pll2_tbl[1]},
-	{ 1, 1200000, PLL_2, 3, 0, UINT_MAX, 1200, VDD_RAW(1200), &pll2_tbl[2]},
-	{ 1, 1401600, PLL_2, 3, 0, UINT_MAX, 1250, VDD_RAW(1250), &pll2_tbl[3]},
+	{ 1, 806400,  PLL_2, 3, 0, UINT_MAX, 1100, VDD_RAW(1100), &pll2_tbl[2]},
+	{ 1, 1024000, PLL_2, 3, 0, UINT_MAX, 1200, VDD_RAW(1200), &pll2_tbl[3]},
+	{ 1, 1200000, PLL_2, 3, 0, UINT_MAX, 1200, VDD_RAW(1200), &pll2_tbl[4]},
+	{ 1, 1401600, PLL_2, 3, 0, UINT_MAX, 1250, VDD_RAW(1250), &pll2_tbl[5]},
+	{ 1, 1516800, PLL_2, 3, 0, UINT_MAX, 1300, VDD_RAW(1300), &pll2_tbl[6]},
+	{ 1, 1612800, PLL_2, 3, 0, UINT_MAX, 1350, VDD_RAW(1350), &pll2_tbl[7]},
+	{ 1, 1708800, PLL_2, 3, 0, UINT_MAX, 1400, VDD_RAW(1400), &pll2_tbl[8]},
+	{ 1, 1804800, PLL_2, 3, 0, UINT_MAX, 1425, VDD_RAW(1425), &pll2_tbl[9]},
 	{ 0 }
 };
 

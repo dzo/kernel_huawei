@@ -792,7 +792,7 @@ int write_power_config(int on)
     if(on)
     {
 	    *(tmp + 0) = 50; //0xff//Idle Acquisition
-	    *(tmp + 1) = 16; //0xff//Active Acquisition
+	    *(tmp + 1) = 14; //0xff//Active Acquisition
 	    *(tmp + 2) = 50; //0x32//Active to Idle Timeout
     }
     else
@@ -856,8 +856,8 @@ int write_acquisition_config(u8 instance,int flag)
 	if(0 == flag)
     {
         /* shut down calibration */
-    	*(tmp + 6) = 0; //0x0a//ATCHCALST
-    	*(tmp + 7) = 1; //0x0f//ATCHCALSTHR
+    	*(tmp + 6) = 5; //0x0a//ATCHCALST
+    	*(tmp + 7) = 40; //0x0f//ATCHCALSTHR
     }
     else 
     {
@@ -979,7 +979,7 @@ int write_multitouchscreen_config(u8 instance,int flag)
     if(0 == flag)
     {
         /* effect atch vaule */
-    	*(tmp + 7) = 20; //0x1d; //tchthr
+    	*(tmp + 7) = 50; //0x1d; //tchthr
     }
     else
     {
@@ -1865,7 +1865,7 @@ static int atmel_ts_initchip(void)
 /*===========================================================================
 FUNCTION      is_in_extra_region
 DESCRIPTION
-              ÊÇ·ñÔÚ¸½¼ÓTOUCHÇø
+              ï¿½Ç·ï¿½ï¿½Ú¸ï¿½ï¿½ï¿½TOUCHï¿½ï¿½
 DEPENDENCIES
   None
 RETURN VALUE
@@ -1889,7 +1889,7 @@ static bool is_in_extra_region(int pos_x, int pos_y)
 /*===========================================================================
 FUNCTION      touch_get_extra_keycode
 DESCRIPTION
-              È¡µÃ¸½¼ÓÇø¼üÖµ
+              È¡ï¿½Ã¸ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Öµ
 DEPENDENCIES
   None
 RETURN VALUE
