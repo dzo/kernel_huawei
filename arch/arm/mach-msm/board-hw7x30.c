@@ -135,7 +135,7 @@ struct regulator *vreg_gp4 = NULL;
 #include <linux/bma150.h>
 #include "board-msm7x30-regulator.h"
 
-#define MSM_PMEM_SF_SIZE	0x1800000 // 24M
+#define MSM_PMEM_SF_SIZE	0x01800000 // 24M
 
 #ifdef CONFIG_HUAWEI_KERNEL
 #include <asm-arm/huawei/smem_vendor_huawei.h>
@@ -147,23 +147,23 @@ smem_huawei_vender usb_para_data;
 
 /*set fb size to 5M to save memory 2.8M */
 #ifdef CONFIG_HUAWEI_KERNEL
-#define MSM_FB_SIZE             0x465000
-#define MSM_PMEM_ADSP_SIZE      0x2000000 
+#define MSM_FB_SIZE             0x00480000
+#define MSM_PMEM_ADSP_SIZE      0x02200000 
 #else
 #ifdef CONFIG_FB_MSM_TRIPLE_BUFFER
-#define MSM_FB_SIZE            0x780000
+#define MSM_FB_SIZE            0x00800000
 #else
-#define MSM_FB_SIZE            0x500000
+#define MSM_FB_SIZE            0x00500000
 #endif
-#define MSM_PMEM_ADSP_SIZE      0x3000000
+#define MSM_PMEM_ADSP_SIZE      0x03000000
 #endif
-#define MSM_FLUID_PMEM_ADSP_SIZE	0x2800000
-#define PMEM_KERNEL_EBI0_SIZE   0x600000
-#define MSM_PMEM_AUDIO_SIZE     0x200000
+#define MSM_FLUID_PMEM_ADSP_SIZE	0x02800000
+#define PMEM_KERNEL_EBI0_SIZE   0x00600000
+#define MSM_PMEM_AUDIO_SIZE     0x00200000
 
 #ifdef CONFIG_FB_MSM_DEFAULT_DEPTH_RGB565
 #undef MSM_PMEM_SF_SIZE
-#define MSM_PMEM_SF_SIZE        0x0c00000
+#define MSM_PMEM_SF_SIZE        0x01800000
 #endif
 
 #define PMIC_GPIO_INT		27
