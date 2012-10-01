@@ -137,7 +137,7 @@ static void msm_keypad_bl_led_set(struct led_classdev *led_cdev,
     int ret = 0;
     if(machine_is_msm7x30_u8800() || machine_is_msm7x30_u8800_51() || machine_is_msm8255_u8800_pro() ) 
     {
-      ret = pmic_set_keyled_intensity(LED_KEYPAD, value/20);
+      ret = pmic_set_keyled_intensity(LED_KEYPAD, value/16);
     }
     else if( machine_is_msm8255_u8860lp()	
 	       ||machine_is_msm8255_u8860_51())
