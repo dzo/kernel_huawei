@@ -1344,7 +1344,7 @@ static struct snddev_icodec_data snddev_ispeaker_rx_data_u8820 = {
 	.capability = (SNDDEV_CAP_RX | SNDDEV_CAP_VOICE),
 	.name = "speaker_stereo_rx",
 	.copp_id = 0,
-	.acdb_id = ACDB_ID_SPKR_PHONE_MONO, //7,
+	.acdb_id = ACDB_ID_SPKR_PHONE_MUSIC_MONO, //7, //ACDB_ID_SPKR_PHONE_MONO, //7,
 	.profile = &ispeaker_rx_profile_u8820,
 	.channel_mode = 1,//single channel for u8800_51
 	.pmctl_id = NULL,
@@ -1352,10 +1352,10 @@ static struct snddev_icodec_data snddev_ispeaker_rx_data_u8820 = {
 	.default_sample_rate = 48000,
 	.pamp_on = &msm_snddev_poweramp_on,
 	.pamp_off = &msm_snddev_poweramp_off,
-	.max_voice_rx_vol[VOC_NB_INDEX] = 200, 
-	.min_voice_rx_vol[VOC_NB_INDEX] = -1300, 
-	.max_voice_rx_vol[VOC_WB_INDEX] = 200, 
-	.min_voice_rx_vol[VOC_WB_INDEX] = -1300  
+	.max_voice_rx_vol[VOC_NB_INDEX] = 100, 
+	.min_voice_rx_vol[VOC_NB_INDEX] = -1400, 
+	.max_voice_rx_vol[VOC_WB_INDEX] = 100, 
+	.min_voice_rx_vol[VOC_WB_INDEX] = -1400  
 };
 
 static struct platform_device msm_ispeaker_rx_device_u8820 = {
