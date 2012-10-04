@@ -19,7 +19,6 @@
 #include <linux/bootmem.h>
 #include <linux/io.h>
 #ifdef CONFIG_SPI_QSD
-#include <linux/spi/spi.h>
 #endif
 #include <linux/msm_ssbi.h>
 #include <linux/mfd/pmic8058.h>
@@ -4443,141 +4442,6 @@ static struct msm_pm_platform_data msm_pm_data[MSM_PM_SLEEP_MODE_NR] = {
 	},
 };
 
-static struct resource qsd_spi_resources[] = {
-	{
-		.name   = "spi_irq_in",
-		.start	= INT_SPI_INPUT,
-		.end	= INT_SPI_INPUT,
-		.flags	= IORESOURCE_IRQ,
-	},
-	{
-		.name   = "spi_irq_out",
-		.start	= INT_SPI_OUTPUT,
-		.end	= INT_SPI_OUTPUT,
-		.flags	= IORESOURCE_IRQ,
-	},
-	{
-		.name   = "spi_irq_err",
-		.start	= INT_SPI_ERROR,
-		.end	= INT_SPI_ERROR,
-		.flags	= IORESOURCE_IRQ,
-	},
-	{
-		.name   = "spi_base",
-		.start	= 0xA8000000,
-		.end	= 0xA8000000 + SZ_4K - 1,
-		.flags	= IORESOURCE_MEM,
-	},
-	{
-		.name   = "spidm_channels",
-		.flags  = IORESOURCE_DMA,
-	},
-	{
-		.name   = "spidm_crci",
-		.flags  = IORESOURCE_DMA,
-	},
-};
-
-#define AMDH0_BASE_PHYS		0xAC200000
-#define ADMH0_GP_CTL		(ct_adm_base + 0x3D8)
-static int msm_qsd_spi_dma_config(void)
-{
-	void __iomem *ct_adm_base = 0;
-	u32 spi_mux = 0;
-	int ret = 0;
-
-	ct_adm_base = ioremap(AMDH0_BASE_PHYS, PAGE_SIZE);
-	if (!ct_adm_base) {
-		pr_err("%s: Could not remap %x\n", __func__, AMDH0_BASE_PHYS);
-		return -ENOMEM;
-	}
-
-	spi_mux = (ioread32(ADMH0_GP_CTL) & (0x3 << 12)) >> 12;
-
-	qsd_spi_resources[4].start  = DMOV_USB_CHAN;
-	qsd_spi_resources[4].end    = DMOV_TSIF_CHAN;
-
-	switch (spi_mux) {
-	case (1):
-		qsd_spi_resources[5].start  = DMOV_HSUART1_RX_CRCI;
-		qsd_spi_resources[5].end    = DMOV_HSUART1_TX_CRCI;
-		break;
-	case (2):
-		qsd_spi_resources[5].start  = DMOV_HSUART2_RX_CRCI;
-		qsd_spi_resources[5].end    = DMOV_HSUART2_TX_CRCI;
-		break;
-	case (3):
-		qsd_spi_resources[5].start  = DMOV_CE_OUT_CRCI;
-		qsd_spi_resources[5].end    = DMOV_CE_IN_CRCI;
-		break;
-	default:
-		ret = -ENOENT;
-	}
-
-	iounmap(ct_adm_base);
-
-	return ret;
-}
-
-static struct platform_device qsd_device_spi = {
-	.name		= "spi_qsd",
-	.id		= 0,
-	.num_resources	= ARRAY_SIZE(qsd_spi_resources),
-	.resource	= qsd_spi_resources,
-};
-
-#ifdef CONFIG_SPI_QSD
-static struct spi_board_info lcdc_sharp_spi_board_info[] __initdata = {
-	{
-		.modalias	= "lcdc_sharp_ls038y7dx01",
-		.mode		= SPI_MODE_1,
-		.bus_num	= 0,
-		.chip_select	= 0,
-		.max_speed_hz	= 26331429,
-	}
-};
-static struct spi_board_info lcdc_toshiba_spi_board_info[] __initdata = {
-	{
-		.modalias       = "lcdc_toshiba_ltm030dd40",
-		.mode           = SPI_MODE_3|SPI_CS_HIGH,
-		.bus_num        = 0,
-		.chip_select    = 0,
-		.max_speed_hz   = 9963243,
-	}
-};
-#endif
-
-static struct msm_gpio qsd_spi_gpio_config_data[] = {
-	{ GPIO_CFG(45, 1, GPIO_CFG_INPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_2MA), "spi_clk" },
-	{ GPIO_CFG(46, 1, GPIO_CFG_INPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_2MA), "spi_cs0" },
-	{ GPIO_CFG(47, 1, GPIO_CFG_INPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_8MA), "spi_mosi" },
-	{ GPIO_CFG(48, 1, GPIO_CFG_INPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_2MA), "spi_miso" },
-};
-
-static int msm_qsd_spi_gpio_config(void)
-{
-	return msm_gpios_request_enable(qsd_spi_gpio_config_data,
-		ARRAY_SIZE(qsd_spi_gpio_config_data));
-}
-
-static void msm_qsd_spi_gpio_release(void)
-{
-	msm_gpios_disable_free(qsd_spi_gpio_config_data,
-		ARRAY_SIZE(qsd_spi_gpio_config_data));
-}
-
-static struct msm_spi_platform_data qsd_spi_pdata = {
-	.max_clock_speed = 26331429,
-	.gpio_config  = msm_qsd_spi_gpio_config,
-	.gpio_release = msm_qsd_spi_gpio_release,
-	.dma_config = msm_qsd_spi_dma_config,
-};
-
-static void __init msm_qsd_spi_init(void)
-{
-	qsd_device_spi.dev.platform_data = &qsd_spi_pdata;
-}
-
 #ifdef CONFIG_USB_EHCI_MSM_72K
 static void msm_hsusb_vbus_power(unsigned phy_info, int on)
 {
@@ -6878,8 +6742,7 @@ static struct platform_device *devices[] __initdata = {
 #ifdef CONFIG_USB_G_ANDROID
 	&android_usb_device,
 #endif
-	&qsd_device_spi,
-
+	
 #ifdef CONFIG_MSM_SSBI
 	&msm_device_ssbi_pmic1,
 #endif
@@ -9044,8 +8907,7 @@ static void __init msm7x30_init(void)
 	/* removed several lines */
 //	(void)lcdc_sharp_panel_device;
 //	(void)msm_camera_sensor_mt9e013;
-	msm_qsd_spi_init();
-
+	
 /*
 #ifdef CONFIG_SPI_QSD
 	if (machine_is_msm7x30_fluid())
