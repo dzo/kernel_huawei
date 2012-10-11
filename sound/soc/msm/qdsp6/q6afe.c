@@ -1,4 +1,4 @@
-/*  Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2012, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -17,6 +17,7 @@
 #include <linux/wait.h>
 #include <linux/jiffies.h>
 #include <linux/sched.h>
+#include <mach/qdsp6v2/audio_acdb.h>
 #include <sound/apr_audio.h>
 #include <sound/q6afe.h>
 
@@ -35,6 +36,8 @@ struct afe_ctl {
 };
 
 static struct afe_ctl this_afe;
+
+static uint32_t afe_cal_addr[MAX_AUDPROC_TYPES];
 
 #define TIMEOUT_MS 1000
 #define Q6AFE_MAX_VOLUME 0x3FFF
@@ -56,6 +59,7 @@ static int32_t afe_callback(struct apr_client_data *data, void *priv)
 		pr_debug("task_name = %s pid = %d\n",
 			this_afe.task->comm, this_afe.task->pid);
 		send_sig(SIGUSR1, this_afe.task, 0);
+		return 0;
 	}
 	if (data->payload_size) {
 		uint32_t *payload;
@@ -73,6 +77,7 @@ static int32_t afe_callback(struct apr_client_data *data, void *priv)
 		if (data->opcode == APR_BASIC_RSP_RESULT) {
 			switch (payload[0]) {
 			case AFE_PORT_AUDIO_IF_CONFIG:
+			case AFE_PORT_MULTI_CHAN_HDMI_AUDIO_IF_CONFIG:
 			case AFE_PORT_CMD_STOP:
 			case AFE_PORT_CMD_START:
 			case AFE_PORT_CMD_LOOPBACK:
@@ -276,7 +281,7 @@ int afe_sizeof_cfg_cmd(u16 port_id)
 		ret_size = SIZEOF_CFG_CMD(afe_port_mi2s_cfg);
 		break;
 	case HDMI_RX:
-		ret_size = SIZEOF_CFG_CMD(afe_port_hdmi_cfg);
+		ret_size = SIZEOF_CFG_CMD(afe_port_hdmi_multi_ch_cfg);
 		break;
 	case SLIMBUS_0_RX:
 	case SLIMBUS_0_TX:
@@ -313,6 +318,63 @@ int afe_q6_interface_prepare(void)
 	return ret;
 }
 
+static void afe_send_cal_block(int32_t path, u16 port_id)
+{
+	int						result = 0;
+	struct acdb_cal_block				cal_block;
+	struct afe_port_cmd_set_param_no_payload	afe_cal;
+	pr_debug("%s: path %d\n", __func__, path);
+
+	get_afe_cal(path, &cal_block);
+	if (cal_block.cal_size <= 0) {
+		pr_debug("%s: No AFE cal to send!\n", __func__);
+		goto done;
+	}
+
+	if (afe_cal_addr[path] != cal_block.cal_paddr) {
+		if (afe_cal_addr[path] != 0)
+			afe_cmd_memory_unmap_nowait(afe_cal_addr[path]);
+		afe_cmd_memory_map_nowait(cal_block.cal_paddr,
+						cal_block.cal_size);
+		afe_cal_addr[path] = cal_block.cal_paddr;
+	}
+
+	afe_cal.hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
+				APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
+	afe_cal.hdr.pkt_size = sizeof(afe_cal);
+	afe_cal.hdr.src_port = 0;
+	afe_cal.hdr.dest_port = 0;
+	afe_cal.hdr.token = 0;
+	afe_cal.hdr.opcode = AFE_PORT_CMD_SET_PARAM;
+	afe_cal.port_id = port_id;
+	afe_cal.payload_size = cal_block.cal_size;
+	afe_cal.payload_address = cal_block.cal_paddr;
+
+	pr_debug("%s: AFE cal sent for device port = %d, path = %d, "
+		"cal size = %d, cal addr = 0x%x\n", __func__,
+		port_id, path, cal_block.cal_size, cal_block.cal_paddr);
+
+	result = apr_send_pkt(this_afe.apr, (uint32_t *) &afe_cal);
+	if (result < 0) {
+		pr_err("%s: AFE cal for port %d failed\n",
+			__func__, port_id);
+	}
+
+	pr_debug("%s: AFE cal sent for path %d device!\n", __func__, path);
+done:
+	return;
+}
+
+void afe_send_cal(u16 port_id)
+{
+	pr_debug("%s\n", __func__);
+
+	if (afe_get_port_type(port_id) == MSM_AFE_PORT_TYPE_TX)
+		afe_send_cal_block(TX_CAL, port_id);
+	else if (afe_get_port_type(port_id) == MSM_AFE_PORT_TYPE_RX)
+		afe_send_cal_block(RX_CAL, port_id);
+}
+
 int afe_port_start_nowait(u16 port_id, union afe_port_config *afe_config,
 	u32 rate) /* This function is no blocking */
 {
@@ -325,7 +387,7 @@ int afe_port_start_nowait(u16 port_id, union afe_port_config *afe_config,
 		ret = -EINVAL;
 		return ret;
 	}
-	pr_info("%s: %d %d\n", __func__, port_id, rate);
+	pr_debug("%s: %d %d\n", __func__, port_id, rate);
 
 	if ((port_id == RT_PROXY_DAI_001_RX) ||
 		(port_id == RT_PROXY_DAI_002_TX))
@@ -339,13 +401,25 @@ int afe_port_start_nowait(u16 port_id, union afe_port_config *afe_config,
 		ret = -ENODEV;
 		return ret;
 	}
-	config.hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
+
+	if (port_id == HDMI_RX) {
+		config.hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
 				APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
-	config.hdr.pkt_size = afe_sizeof_cfg_cmd(port_id);
-	config.hdr.src_port = 0;
-	config.hdr.dest_port = 0;
-	config.hdr.token = 0;
-	config.hdr.opcode = AFE_PORT_AUDIO_IF_CONFIG;
+		config.hdr.pkt_size = afe_sizeof_cfg_cmd(port_id);
+		config.hdr.src_port = 0;
+		config.hdr.dest_port = 0;
+		config.hdr.token = 0;
+		config.hdr.opcode = AFE_PORT_MULTI_CHAN_HDMI_AUDIO_IF_CONFIG;
+	} else {
+
+		config.hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
+				APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
+		config.hdr.pkt_size = afe_sizeof_cfg_cmd(port_id);
+		config.hdr.src_port = 0;
+		config.hdr.dest_port = 0;
+		config.hdr.token = 0;
+		config.hdr.opcode = AFE_PORT_AUDIO_IF_CONFIG;
+	}
 
 	if (afe_validate_port(port_id) < 0) {
 
@@ -364,6 +438,10 @@ int afe_port_start_nowait(u16 port_id, union afe_port_config *afe_config,
 		ret = -EINVAL;
 		goto fail_cmd;
 	}
+
+	/* send AFE cal */
+	afe_send_cal(port_id);
+
 	start.hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
 				APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
 	start.hdr.pkt_size = sizeof(start);
@@ -677,6 +755,39 @@ int afe_apply_gain(u16 port_id, u16 gain)
 fail_cmd:
 	return ret;
 }
+
+int afe_pseudo_port_start_nowait(u16 port_id)
+{
+	int ret = 0;
+	struct afe_pseudoport_start_command start;
+
+	pr_debug("%s: port_id=%d\n", __func__, port_id);
+	if (this_afe.apr == NULL) {
+		pr_err("%s: AFE APR is not registered\n", __func__);
+		return -ENODEV;
+	}
+
+
+	start.hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
+				APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
+	start.hdr.pkt_size = sizeof(start);
+	start.hdr.src_port = 0;
+	start.hdr.dest_port = 0;
+	start.hdr.token = 0;
+	start.hdr.opcode = AFE_PSEUDOPORT_CMD_START;
+	start.port_id = port_id;
+	start.timing = 1;
+
+	atomic_set(&this_afe.state, 1);
+	ret = apr_send_pkt(this_afe.apr, (uint32_t *) &start);
+	if (ret < 0) {
+		pr_err("%s: AFE enable for port %d failed %d\n",
+		       __func__, port_id, ret);
+		return -EINVAL;
+	}
+	return 0;
+}
+
 int afe_start_pseudo_port(u16 port_id)
 {
 	int ret = 0;
@@ -703,8 +814,7 @@ int afe_start_pseudo_port(u16 port_id)
 	if (ret < 0) {
 		pr_err("%s: AFE enable for port %d failed %d\n",
 		       __func__, port_id, ret);
-		ret = -EINVAL;
-		return ret;
+		return -EINVAL;
 	}
 
 	ret = wait_event_timeout(this_afe.wait,
@@ -712,24 +822,22 @@ int afe_start_pseudo_port(u16 port_id)
 				 msecs_to_jiffies(TIMEOUT_MS));
 	if (!ret) {
 		pr_err("%s: wait_event timeout\n", __func__);
-		ret = -EINVAL;
-		return ret;
+		return -EINVAL;
 	}
 
 	return 0;
 }
 
-int afe_stop_pseudo_port(u16 port_id)
+int afe_pseudo_port_stop_nowait(u16 port_id)
 {
 	int ret = 0;
 	struct afe_pseudoport_stop_command stop;
 
-	pr_info("%s: port_id=%d\n", __func__, port_id);
+	pr_debug("%s: port_id=%d\n", __func__, port_id);
 
 	if (this_afe.apr == NULL) {
 		pr_err("%s: AFE is already closed\n", __func__);
-		ret = -EINVAL;
-		return ret;
+		return -EINVAL;
 	}
 
 	stop.hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
@@ -746,8 +854,40 @@ int afe_stop_pseudo_port(u16 port_id)
 	ret = apr_send_pkt(this_afe.apr, (uint32_t *) &stop);
 	if (ret < 0) {
 		pr_err("%s: AFE close failed %d\n", __func__, ret);
-		ret = -EINVAL;
-		return ret;
+		return -EINVAL;
+	}
+
+	return 0;
+
+}
+
+int afe_stop_pseudo_port(u16 port_id)
+{
+	int ret = 0;
+	struct afe_pseudoport_stop_command stop;
+
+	pr_info("%s: port_id=%d\n", __func__, port_id);
+
+	if (this_afe.apr == NULL) {
+		pr_err("%s: AFE is already closed\n", __func__);
+		return -EINVAL;
+	}
+
+	stop.hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
+				APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
+	stop.hdr.pkt_size = sizeof(stop);
+	stop.hdr.src_port = 0;
+	stop.hdr.dest_port = 0;
+	stop.hdr.token = 0;
+	stop.hdr.opcode = AFE_PSEUDOPORT_CMD_STOP;
+	stop.port_id = port_id;
+	stop.reserved = 0;
+
+	atomic_set(&this_afe.state, 1);
+	ret = apr_send_pkt(this_afe.apr, (uint32_t *) &stop);
+	if (ret < 0) {
+		pr_err("%s: AFE close failed %d\n", __func__, ret);
+		return -EINVAL;
 	}
 
 	ret = wait_event_timeout(this_afe.wait,
@@ -755,8 +895,7 @@ int afe_stop_pseudo_port(u16 port_id)
 				 msecs_to_jiffies(TIMEOUT_MS));
 	if (!ret) {
 		pr_err("%s: wait_event timeout\n", __func__);
-		ret = -EINVAL;
-		return ret;
+		return -EINVAL;
 	}
 
 	return 0;
@@ -813,6 +952,45 @@ int afe_cmd_memory_map(u32 dma_addr_p, u32 dma_buf_sz)
 	return 0;
 }
 
+int afe_cmd_memory_map_nowait(u32 dma_addr_p, u32 dma_buf_sz)
+{
+	int ret = 0;
+	struct afe_cmd_memory_map mregion;
+
+	pr_debug("%s:\n", __func__);
+
+	if (this_afe.apr == NULL) {
+		this_afe.apr = apr_register("ADSP", "AFE", afe_callback,
+					0xFFFFFFFF, &this_afe);
+		pr_debug("%s: Register AFE\n", __func__);
+		if (this_afe.apr == NULL) {
+			pr_err("%s: Unable to register AFE\n", __func__);
+			ret = -ENODEV;
+			return ret;
+		}
+	}
+
+	mregion.hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
+				APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
+	mregion.hdr.pkt_size = sizeof(mregion);
+	mregion.hdr.src_port = 0;
+	mregion.hdr.dest_port = 0;
+	mregion.hdr.token = 0;
+	mregion.hdr.opcode = AFE_SERVICE_CMD_MEMORY_MAP;
+	mregion.phy_addr = dma_addr_p;
+	mregion.mem_sz = dma_buf_sz;
+	mregion.mem_id = 0;
+	mregion.rsvd = 0;
+
+	ret = apr_send_pkt(this_afe.apr, (uint32_t *) &mregion);
+	if (ret < 0) {
+		pr_err("%s: AFE memory map cmd failed %d\n",
+			__func__, ret);
+		ret = -EINVAL;
+	}
+	return 0;
+}
+
 int afe_cmd_memory_unmap(u32 dma_addr_p)
 {
 	int ret = 0;
@@ -843,7 +1021,7 @@ int afe_cmd_memory_unmap(u32 dma_addr_p)
 	atomic_set(&this_afe.state, 1);
 	ret = apr_send_pkt(this_afe.apr, (uint32_t *) &mregion);
 	if (ret < 0) {
-		pr_err("%s: AFE memory map cmd failed %d\n",
+		pr_err("%s: AFE memory unmap cmd failed %d\n",
 		       __func__, ret);
 		ret = -EINVAL;
 		return ret;
@@ -857,7 +1035,42 @@ int afe_cmd_memory_unmap(u32 dma_addr_p)
 		ret = -EINVAL;
 		return ret;
 	}
+	return 0;
+}
 
+int afe_cmd_memory_unmap_nowait(u32 dma_addr_p)
+{
+	int ret = 0;
+	struct afe_cmd_memory_unmap mregion;
+
+	pr_debug("%s:\n", __func__);
+
+	if (this_afe.apr == NULL) {
+		this_afe.apr = apr_register("ADSP", "AFE", afe_callback,
+					0xFFFFFFFF, &this_afe);
+		pr_debug("%s: Register AFE\n", __func__);
+		if (this_afe.apr == NULL) {
+			pr_err("%s: Unable to register AFE\n", __func__);
+			ret = -ENODEV;
+			return ret;
+		}
+	}
+
+	mregion.hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
+				APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
+	mregion.hdr.pkt_size = sizeof(mregion);
+	mregion.hdr.src_port = 0;
+	mregion.hdr.dest_port = 0;
+	mregion.hdr.token = 0;
+	mregion.hdr.opcode = AFE_SERVICE_CMD_MEMORY_UNMAP;
+	mregion.phy_addr = dma_addr_p;
+
+	ret = apr_send_pkt(this_afe.apr, (uint32_t *) &mregion);
+	if (ret < 0) {
+		pr_err("%s: AFE memory unmap cmd failed %d\n",
+			__func__, ret);
+		ret = -EINVAL;
+	}
 	return 0;
 }
 
@@ -1228,7 +1441,7 @@ int afe_port_stop_nowait(int port_id)
 		ret = -EINVAL;
 		goto fail_cmd;
 	}
-	pr_info("%s: port_id=%d\n", __func__, port_id);
+	pr_debug("%s: port_id=%d\n", __func__, port_id);
 	port_id = afe_convert_virtual_to_portid(port_id);
 
 	stop.hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
@@ -1266,7 +1479,7 @@ int afe_close(int port_id)
 		ret = -EINVAL;
 		goto fail_cmd;
 	}
-	pr_info("%s: port_id=%d\n", __func__, port_id);
+	pr_debug("%s: port_id=%d\n", __func__, port_id);
 	port_id = afe_convert_virtual_to_portid(port_id);
 
 	stop.hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
@@ -1327,12 +1540,17 @@ static int __init afe_init(void)
 
 static void __exit afe_exit(void)
 {
+	int i;
 #ifdef CONFIG_DEBUG_FS
 	if (debugfs_afelb)
 		debugfs_remove(debugfs_afelb);
 	if (debugfs_afelb_gain)
 		debugfs_remove(debugfs_afelb_gain);
 #endif
+	for (i = 0; i < MAX_AUDPROC_TYPES; i++) {
+		if (afe_cal_addr[i] != 0)
+			afe_cmd_memory_unmap_nowait(afe_cal_addr[i]);
+	}
 }
 
 device_initcall(afe_init);

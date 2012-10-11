@@ -1368,11 +1368,13 @@ static s32 acdb_get_calibration(void)
 
 	acdb_cmd.command_id = ACDB_GET_DEVICE_TABLE;
 	acdb_cmd.device_id = acdb_data.device_info->acdb_id;
+    /*< DTS2010120204486 dongchen 20101223 begin */
     #ifdef CONFIG_HUAWEI_KERNEL
 	acdb_cmd.network_id = ACDB_GSM_NB; //0x0108b155
     #else
     acdb_cmd.network_id = 0x0108B153;
     #endif
+    /* DTS2010120204486 dongchen 20101223 end >*/
 	acdb_cmd.sample_rate_id = acdb_data.device_info->sample_rate;
 	acdb_cmd.total_bytes = ACDB_BUF_SIZE;
 	acdb_cmd.phys_buf = (u32 *)acdb_data.phys_addr;
@@ -3292,7 +3294,6 @@ static s32 acdb_calibrate_device(void *data)
 	result = acdb_initialize_data();
 	if (result)
 		goto done;
-	MM_ERR("acdb_data.build_id[17] = %c\n", acdb_data.build_id[17]);
 	if (acdb_data.build_id[17] != '0') {
 		result = initialize_modem_acdb();
 		if (result < 0)

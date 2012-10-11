@@ -1,4 +1,4 @@
-/*  Copyright (c) 2011, Code Aurora Forum. All rights reserved.
+/*  Copyright (c) 2011-2012, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -52,8 +52,12 @@ static int voice_send_cvp_deregister_cal_cmd(struct voice_data *v);
 static int voice_send_cvp_register_vol_cal_table_cmd(struct voice_data *v);
 static int voice_send_cvp_deregister_vol_cal_table_cmd(struct voice_data *v);
 static int voice_send_set_widevoice_enable_cmd(struct voice_data *v);
-static int voice_send_set_slowtalk_enable_cmd(struct voice_data *v);
-
+static int voice_send_set_pp_enable_cmd(struct voice_data *v,
+					uint32_t module_id, int enable);
+static int voice_cvs_stop_playback(struct voice_data *v);
+static int voice_cvs_start_playback(struct voice_data *v);
+static int voice_cvs_start_record(struct voice_data *v, uint32_t rec_mode);
+static int voice_cvs_stop_record(struct voice_data *v);
 
 static int32_t qdsp_mvm_callback(struct apr_client_data *data, void *priv);
 static int32_t qdsp_cvs_callback(struct apr_client_data *data, void *priv);
@@ -1760,9 +1764,10 @@ fail:
 	return -EINVAL;
 }
 
-static int voice_send_set_slowtalk_enable_cmd(struct voice_data *v)
+static int voice_send_set_pp_enable_cmd(struct voice_data *v,
+					uint32_t module_id, int enable)
 {
-	struct cvs_set_slowtalk_enable_cmd cvs_set_st_cmd;
+	struct cvs_set_pp_enable_cmd cvs_set_pp_cmd;
 	int ret = 0;
 	void *apr_cvs;
 	u16 cvs_handle;
@@ -1780,24 +1785,26 @@ static int voice_send_set_slowtalk_enable_cmd(struct voice_data *v)
 	cvs_handle = voice_get_cvs_handle(v);
 
 	/* fill in the header */
-	cvs_set_st_cmd.hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
+	cvs_set_pp_cmd.hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
 				APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
-	cvs_set_st_cmd.hdr.pkt_size = APR_PKT_SIZE(APR_HDR_SIZE,
-				sizeof(cvs_set_st_cmd) - APR_HDR_SIZE);
-	cvs_set_st_cmd.hdr.src_port = v->session_id;
-	cvs_set_st_cmd.hdr.dest_port = cvs_handle;
-	cvs_set_st_cmd.hdr.token = 0;
-	cvs_set_st_cmd.hdr.opcode = VSS_ICOMMON_CMD_SET_UI_PROPERTY;
+	cvs_set_pp_cmd.hdr.pkt_size = APR_PKT_SIZE(APR_HDR_SIZE,
+				sizeof(cvs_set_pp_cmd) - APR_HDR_SIZE);
+	cvs_set_pp_cmd.hdr.src_port = v->session_id;
+	cvs_set_pp_cmd.hdr.dest_port = cvs_handle;
+	cvs_set_pp_cmd.hdr.token = 0;
+	cvs_set_pp_cmd.hdr.opcode = VSS_ICOMMON_CMD_SET_UI_PROPERTY;
 
-	cvs_set_st_cmd.vss_set_st.module_id = MODULE_ID_VOICE_MODULE_ST;
-	cvs_set_st_cmd.vss_set_st.param_id = VOICE_PARAM_MOD_ENABLE;
-	cvs_set_st_cmd.vss_set_st.param_size = MOD_ENABLE_PARAM_LEN;
-	cvs_set_st_cmd.vss_set_st.reserved = 0;
-	cvs_set_st_cmd.vss_set_st.enable = v->st_enable;
-	cvs_set_st_cmd.vss_set_st.reserved_field = 0;
+	cvs_set_pp_cmd.vss_set_pp.module_id = module_id;
+	cvs_set_pp_cmd.vss_set_pp.param_id = VOICE_PARAM_MOD_ENABLE;
+	cvs_set_pp_cmd.vss_set_pp.param_size = MOD_ENABLE_PARAM_LEN;
+	cvs_set_pp_cmd.vss_set_pp.reserved = 0;
+	cvs_set_pp_cmd.vss_set_pp.enable = enable;
+	cvs_set_pp_cmd.vss_set_pp.reserved_field = 0;
+	pr_debug("voice_send_set_pp_enable_cmd, module_id=%d, enable=%d\n",
+		module_id, enable);
 
 	v->cvs_state = CMD_STATUS_FAIL;
-	ret = apr_send_pkt(apr_cvs, (uint32_t *) &cvs_set_st_cmd);
+	ret = apr_send_pkt(apr_cvs, (uint32_t *) &cvs_set_pp_cmd);
 	if (ret < 0) {
 		pr_err("Fail: sending cvs set slowtalk enable,\n");
 		goto fail;
@@ -1914,10 +1921,22 @@ static int voice_setup_vocproc(struct voice_data *v)
 
 	/* enable slowtalk if st_enable is set */
 	if (v->st_enable)
-		voice_send_set_slowtalk_enable_cmd(v);
+		voice_send_set_pp_enable_cmd(v, MODULE_ID_VOICE_MODULE_ST,
+					v->st_enable);
+	if (v->fens_enable)
+		voice_send_set_pp_enable_cmd(v, MODULE_ID_VOICE_MODULE_FENS,
+					v->fens_enable);
 
 	if (is_voip_session(v->session_id))
 		voice_send_netid_timing_cmd(v);
+
+	/* Start in-call music delivery if this feature is enabled */
+	if (v->music_info.play_enable)
+		voice_cvs_start_playback(v);
+
+	/* Start in-call recording if this feature is enabled */
+	if (v->rec_info.rec_enable)
+		voice_cvs_start_record(v, v->rec_info.rec_mode);
 
 	rtac_add_voice(voice_get_cvs_handle(v),
 		voice_get_cvp_handle(v),
@@ -2150,6 +2169,10 @@ static int voice_destroy_vocproc(struct voice_data *v)
 	mvm_handle = voice_get_mvm_handle(v);
 	cvp_handle = voice_get_cvp_handle(v);
 
+	/* stop playback or recording */
+	v->music_info.force = 1;
+	voice_cvs_stop_playback(v);
+	voice_cvs_stop_record(v);
 	/* send stop voice cmd */
 	voice_send_stop_voice_cmd(v);
 
@@ -2322,6 +2345,423 @@ static int voice_send_vol_index_cmd(struct voice_data *v)
 	return 0;
 }
 
+static int voice_cvs_start_record(struct voice_data *v, uint32_t rec_mode)
+{
+	int ret = 0;
+	void *apr_cvs;
+	u16 cvs_handle;
+
+	struct cvs_start_record_cmd cvs_start_record;
+
+	if (v == NULL) {
+		pr_err("%s: v is NULL\n", __func__);
+		return -EINVAL;
+	}
+	apr_cvs = common.apr_q6_cvs;
+
+	if (!apr_cvs) {
+		pr_err("%s: apr_cvs is NULL.\n", __func__);
+		return -EINVAL;
+	}
+
+	cvs_handle = voice_get_cvs_handle(v);
+
+	if (!v->rec_info.recording) {
+		cvs_start_record.hdr.hdr_field = APR_HDR_FIELD(
+					APR_MSG_TYPE_SEQ_CMD,
+					APR_HDR_LEN(APR_HDR_SIZE),
+					APR_PKT_VER);
+		cvs_start_record.hdr.pkt_size = APR_PKT_SIZE(APR_HDR_SIZE,
+				  sizeof(cvs_start_record) - APR_HDR_SIZE);
+		cvs_start_record.hdr.src_port = v->session_id;
+		cvs_start_record.hdr.dest_port = cvs_handle;
+		cvs_start_record.hdr.token = 0;
+		cvs_start_record.hdr.opcode = VSS_ISTREAM_CMD_START_RECORD;
+
+		if (rec_mode == VOC_REC_UPLINK) {
+			cvs_start_record.rec_mode.rx_tap_point =
+						VSS_TAP_POINT_NONE;
+			cvs_start_record.rec_mode.tx_tap_point =
+						VSS_TAP_POINT_STREAM_END;
+		} else if (rec_mode == VOC_REC_DOWNLINK) {
+			cvs_start_record.rec_mode.rx_tap_point =
+						VSS_TAP_POINT_STREAM_END;
+			cvs_start_record.rec_mode.tx_tap_point =
+						VSS_TAP_POINT_NONE;
+		} else if (rec_mode == VOC_REC_BOTH) {
+			cvs_start_record.rec_mode.rx_tap_point =
+						VSS_TAP_POINT_STREAM_END;
+			cvs_start_record.rec_mode.tx_tap_point =
+						VSS_TAP_POINT_STREAM_END;
+		} else {
+			pr_err("%s: Invalid in-call rec_mode %d\n", __func__,
+				rec_mode);
+
+			ret = -EINVAL;
+			goto fail;
+		}
+
+		v->cvs_state = CMD_STATUS_FAIL;
+
+		ret = apr_send_pkt(apr_cvs, (uint32_t *) &cvs_start_record);
+		if (ret < 0) {
+			pr_err("%s: Error %d sending START_RECORD\n", __func__,
+				ret);
+
+			goto fail;
+		}
+
+		ret = wait_event_timeout(v->cvs_wait,
+				 (v->cvs_state == CMD_STATUS_SUCCESS),
+				 msecs_to_jiffies(TIMEOUT_MS));
+
+		if (!ret) {
+			pr_err("%s: wait_event timeout\n", __func__);
+
+			goto fail;
+		}
+		v->rec_info.recording = 1;
+	} else {
+		pr_debug("%s: Start record already sent\n", __func__);
+	}
+
+	return 0;
+
+fail:
+	return ret;
+}
+
+static int voice_cvs_stop_record(struct voice_data *v)
+{
+	int ret = 0;
+	void *apr_cvs;
+	u16 cvs_handle;
+	struct apr_hdr cvs_stop_record;
+
+	if (v == NULL) {
+		pr_err("%s: v is NULL\n", __func__);
+		return -EINVAL;
+	}
+	apr_cvs = common.apr_q6_cvs;
+
+	if (!apr_cvs) {
+		pr_err("%s: apr_cvs is NULL.\n", __func__);
+		return -EINVAL;
+	}
+
+	cvs_handle = voice_get_cvs_handle(v);
+
+	if (v->rec_info.recording) {
+		cvs_stop_record.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
+				  APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
+		cvs_stop_record.pkt_size = APR_PKT_SIZE(APR_HDR_SIZE,
+				  sizeof(cvs_stop_record) - APR_HDR_SIZE);
+		cvs_stop_record.src_port = v->session_id;
+		cvs_stop_record.dest_port = cvs_handle;
+		cvs_stop_record.token = 0;
+		cvs_stop_record.opcode = VSS_ISTREAM_CMD_STOP_RECORD;
+
+		v->cvs_state = CMD_STATUS_FAIL;
+
+		ret = apr_send_pkt(apr_cvs, (uint32_t *) &cvs_stop_record);
+		if (ret < 0) {
+			pr_err("%s: Error %d sending STOP_RECORD\n",
+				__func__, ret);
+
+			goto fail;
+		}
+
+		ret = wait_event_timeout(v->cvs_wait,
+				 (v->cvs_state == CMD_STATUS_SUCCESS),
+				 msecs_to_jiffies(TIMEOUT_MS));
+		if (!ret) {
+			pr_err("%s: wait_event timeout\n", __func__);
+
+			goto fail;
+		}
+		v->rec_info.recording = 0;
+	} else {
+		pr_debug("%s: Stop record already sent\n", __func__);
+	}
+
+	return 0;
+
+fail:
+
+	return ret;
+}
+
+int voc_start_record(uint32_t port_id, uint32_t set)
+{
+	int ret = 0;
+	int rec_mode = 0;
+	u16 cvs_handle;
+	int i, rec_set = 0;
+
+	for (i = 0; i < MAX_VOC_SESSIONS; i++) {
+		struct voice_data *v = &common.voice[i];
+		pr_debug("%s: i:%d port_id: %d, set: %d\n",
+			__func__, i, port_id, set);
+
+		mutex_lock(&v->lock);
+		rec_mode = v->rec_info.rec_mode;
+		rec_set = set;
+		if (set) {
+			if ((v->rec_route_state.ul_flag != 0) &&
+				(v->rec_route_state.dl_flag != 0)) {
+				pr_debug("%s: i=%d, rec mode already set.\n",
+					__func__, i);
+				mutex_unlock(&v->lock);
+				if (i < MAX_VOC_SESSIONS)
+					continue;
+				else
+					return 0;
+			}
+
+			if (port_id == VOICE_RECORD_TX) {
+				if ((v->rec_route_state.ul_flag == 0)
+				&& (v->rec_route_state.dl_flag == 0)) {
+					rec_mode = VOC_REC_UPLINK;
+					v->rec_route_state.ul_flag = 1;
+				} else if ((v->rec_route_state.ul_flag == 0)
+					&& (v->rec_route_state.dl_flag != 0)) {
+					voice_cvs_stop_record(v);
+					rec_mode = VOC_REC_BOTH;
+					v->rec_route_state.ul_flag = 1;
+				}
+			} else if (port_id == VOICE_RECORD_RX) {
+				if ((v->rec_route_state.ul_flag == 0)
+					&& (v->rec_route_state.dl_flag == 0)) {
+					rec_mode = VOC_REC_DOWNLINK;
+					v->rec_route_state.dl_flag = 1;
+				} else if ((v->rec_route_state.ul_flag != 0)
+					&& (v->rec_route_state.dl_flag == 0)) {
+					voice_cvs_stop_record(v);
+					rec_mode = VOC_REC_BOTH;
+					v->rec_route_state.dl_flag = 1;
+				}
+			}
+			rec_set = 1;
+		} else {
+			if ((v->rec_route_state.ul_flag == 0) &&
+				(v->rec_route_state.dl_flag == 0)) {
+				pr_debug("%s: i=%d, rec already stops.\n",
+					__func__, i);
+				mutex_unlock(&v->lock);
+				if (i < MAX_VOC_SESSIONS)
+					continue;
+				else
+					return 0;
+			}
+
+			if (port_id == VOICE_RECORD_TX) {
+				if ((v->rec_route_state.ul_flag != 0)
+					&& (v->rec_route_state.dl_flag == 0)) {
+					v->rec_route_state.ul_flag = 0;
+					rec_set = 0;
+				} else if ((v->rec_route_state.ul_flag != 0)
+					&& (v->rec_route_state.dl_flag != 0)) {
+					voice_cvs_stop_record(v);
+					v->rec_route_state.ul_flag = 0;
+					rec_mode = VOC_REC_DOWNLINK;
+					rec_set = 1;
+				}
+			} else if (port_id == VOICE_RECORD_RX) {
+				if ((v->rec_route_state.ul_flag == 0)
+					&& (v->rec_route_state.dl_flag != 0)) {
+					v->rec_route_state.dl_flag = 0;
+					rec_set = 0;
+				} else if ((v->rec_route_state.ul_flag != 0)
+					&& (v->rec_route_state.dl_flag != 0)) {
+					voice_cvs_stop_record(v);
+					v->rec_route_state.dl_flag = 0;
+					rec_mode = VOC_REC_UPLINK;
+					rec_set = 1;
+				}
+			}
+		}
+		pr_debug("%s: i=%d, mode =%d, set =%d\n", __func__,
+			i, rec_mode, rec_set);
+		cvs_handle = voice_get_cvs_handle(v);
+
+		if (cvs_handle != 0) {
+			if (rec_set)
+				ret = voice_cvs_start_record(v, rec_mode);
+			else
+				ret = voice_cvs_stop_record(v);
+		}
+
+		/* Cache the value */
+		v->rec_info.rec_enable = rec_set;
+		v->rec_info.rec_mode = rec_mode;
+
+		mutex_unlock(&v->lock);
+	}
+
+	return ret;
+}
+
+static int voice_cvs_start_playback(struct voice_data *v)
+{
+	int ret = 0;
+	struct apr_hdr cvs_start_playback;
+	void *apr_cvs;
+	u16 cvs_handle;
+
+	if (v == NULL) {
+		pr_err("%s: v is NULL\n", __func__);
+		return -EINVAL;
+	}
+	apr_cvs = common.apr_q6_cvs;
+
+	if (!apr_cvs) {
+		pr_err("%s: apr_cvs is NULL.\n", __func__);
+		return -EINVAL;
+	}
+
+	cvs_handle = voice_get_cvs_handle(v);
+
+	if (!v->music_info.playing && v->music_info.count) {
+		cvs_start_playback.hdr_field = APR_HDR_FIELD(
+					APR_MSG_TYPE_SEQ_CMD,
+					APR_HDR_LEN(APR_HDR_SIZE),
+					APR_PKT_VER);
+		cvs_start_playback.pkt_size = APR_PKT_SIZE(APR_HDR_SIZE,
+				sizeof(cvs_start_playback) - APR_HDR_SIZE);
+		cvs_start_playback.src_port = v->session_id;
+		cvs_start_playback.dest_port = cvs_handle;
+		cvs_start_playback.token = 0;
+		cvs_start_playback.opcode = VSS_ISTREAM_CMD_START_PLAYBACK;
+
+		v->cvs_state = CMD_STATUS_FAIL;
+
+		ret = apr_send_pkt(apr_cvs, (uint32_t *) &cvs_start_playback);
+
+		if (ret < 0) {
+			pr_err("%s: Error %d sending START_PLAYBACK\n",
+				__func__, ret);
+
+			goto fail;
+		}
+
+		ret = wait_event_timeout(v->cvs_wait,
+				 (v->cvs_state == CMD_STATUS_SUCCESS),
+				 msecs_to_jiffies(TIMEOUT_MS));
+		if (!ret) {
+			pr_err("%s: wait_event timeout\n", __func__);
+
+			goto fail;
+		}
+
+		v->music_info.playing = 1;
+	} else {
+		pr_debug("%s: Start playback already sent\n", __func__);
+	}
+
+	return 0;
+
+fail:
+	return ret;
+}
+
+static int voice_cvs_stop_playback(struct voice_data *v)
+{
+	 int ret = 0;
+	 struct apr_hdr cvs_stop_playback;
+	 void *apr_cvs;
+	 u16 cvs_handle;
+
+	if (v == NULL) {
+		pr_err("%s: v is NULL\n", __func__);
+		return -EINVAL;
+	}
+	apr_cvs = common.apr_q6_cvs;
+
+	if (!apr_cvs) {
+		pr_err("%s: apr_cvs is NULL.\n", __func__);
+		return -EINVAL;
+	}
+
+	cvs_handle = voice_get_cvs_handle(v);
+
+	if (v->music_info.playing && ((!v->music_info.count) ||
+						(v->music_info.force))) {
+		cvs_stop_playback.hdr_field =
+				APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
+				APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
+		cvs_stop_playback.pkt_size = APR_PKT_SIZE(APR_HDR_SIZE,
+				sizeof(cvs_stop_playback) - APR_HDR_SIZE);
+		cvs_stop_playback.src_port = v->session_id;
+		cvs_stop_playback.dest_port = cvs_handle;
+		cvs_stop_playback.token = 0;
+
+		cvs_stop_playback.opcode = VSS_ISTREAM_CMD_STOP_PLAYBACK;
+
+		v->cvs_state = CMD_STATUS_FAIL;
+
+		ret = apr_send_pkt(apr_cvs, (uint32_t *) &cvs_stop_playback);
+		if (ret < 0) {
+			pr_err("%s: Error %d sending STOP_PLAYBACK\n",
+			       __func__, ret);
+
+
+			goto fail;
+		}
+
+		ret = wait_event_timeout(v->cvs_wait,
+					 (v->cvs_state == CMD_STATUS_SUCCESS),
+					 msecs_to_jiffies(TIMEOUT_MS));
+		if (!ret) {
+			pr_err("%s: wait_event timeout\n", __func__);
+
+			goto fail;
+		}
+
+		v->music_info.playing = 0;
+		v->music_info.force = 0;
+	} else {
+		pr_debug("%s: Stop playback already sent\n", __func__);
+	}
+
+	return 0;
+
+fail:
+	return ret;
+}
+
+int voc_start_playback(uint32_t set)
+{
+	int ret = 0;
+	u16 cvs_handle;
+	int i;
+
+
+	for (i = 0; i < MAX_VOC_SESSIONS; i++) {
+		struct voice_data *v = &common.voice[i];
+
+		mutex_lock(&v->lock);
+		v->music_info.play_enable = set;
+		if (set)
+			v->music_info.count++;
+		else
+			v->music_info.count--;
+		pr_debug("%s: music_info count =%d\n", __func__,
+			v->music_info.count);
+
+		cvs_handle = voice_get_cvs_handle(v);
+		if (cvs_handle != 0) {
+			if (set)
+				ret = voice_cvs_start_playback(v);
+			else
+				ret = voice_cvs_stop_playback(v);
+		}
+
+		mutex_unlock(&v->lock);
+	}
+
+	return ret;
+}
+
 int voc_disable_cvp(uint16_t session_id)
 {
 	struct voice_data *v = voice_get_session(session_id);
@@ -2403,7 +2843,14 @@ int voc_enable_cvp(uint16_t session_id)
 
 		/* enable slowtalk */
 		if (v->st_enable)
-			voice_send_set_slowtalk_enable_cmd(v);
+			voice_send_set_pp_enable_cmd(v,
+						MODULE_ID_VOICE_MODULE_ST,
+						v->st_enable);
+		/* enable FENS */
+		if (v->fens_enable)
+			voice_send_set_pp_enable_cmd(v,
+						MODULE_ID_VOICE_MODULE_FENS,
+						v->fens_enable);
 
 		get_sidetone_cal(&sidetone_cal_data);
 		if (v->dev_tx.port_id != RT_PROXY_PORT_001_TX &&
@@ -2540,7 +2987,7 @@ uint32_t voc_get_widevoice_enable(uint16_t session_id)
 	return ret;
 }
 
-int voc_set_slowtalk_enable(uint16_t session_id, uint32_t st_enable)
+int voc_set_pp_enable(uint16_t session_id, uint32_t module_id, uint32_t enable)
 {
 	struct voice_data *v = voice_get_session(session_id);
 	int ret = 0;
@@ -2552,18 +2999,27 @@ int voc_set_slowtalk_enable(uint16_t session_id, uint32_t st_enable)
 	}
 
 	mutex_lock(&v->lock);
+	if (module_id == MODULE_ID_VOICE_MODULE_ST)
+		v->st_enable = enable;
+	else if (module_id == MODULE_ID_VOICE_MODULE_FENS)
+		v->fens_enable = enable;
 
-	v->st_enable = st_enable;
-
-	if (v->voc_state == VOC_RUN)
-		ret = voice_send_set_slowtalk_enable_cmd(v);
-
+	if (v->voc_state == VOC_RUN) {
+		if (module_id == MODULE_ID_VOICE_MODULE_ST)
+			ret = voice_send_set_pp_enable_cmd(v,
+						MODULE_ID_VOICE_MODULE_ST,
+						enable);
+		else if (module_id == MODULE_ID_VOICE_MODULE_FENS)
+			ret = voice_send_set_pp_enable_cmd(v,
+						MODULE_ID_VOICE_MODULE_FENS,
+						enable);
+	}
 	mutex_unlock(&v->lock);
 
 	return ret;
 }
 
-uint32_t voc_get_slowtalk_enable(uint16_t session_id)
+int voc_get_pp_enable(uint16_t session_id, uint32_t module_id)
 {
 	struct voice_data *v = voice_get_session(session_id);
 	int ret = 0;
@@ -2575,8 +3031,10 @@ uint32_t voc_get_slowtalk_enable(uint16_t session_id)
 	}
 
 	mutex_lock(&v->lock);
-
-	ret = v->st_enable;
+	if (module_id == MODULE_ID_VOICE_MODULE_ST)
+		ret = v->st_enable;
+	else if (module_id == MODULE_ID_VOICE_MODULE_FENS)
+		ret = v->fens_enable;
 
 	mutex_unlock(&v->lock);
 
@@ -2937,6 +3395,10 @@ static int32_t qdsp_cvs_callback(struct apr_client_data *data, void *priv)
 			case VSS_ICOMMON_CMD_MAP_MEMORY:
 			case VSS_ICOMMON_CMD_UNMAP_MEMORY:
 			case VSS_ICOMMON_CMD_SET_UI_PROPERTY:
+			case VSS_ISTREAM_CMD_START_PLAYBACK:
+			case VSS_ISTREAM_CMD_STOP_PLAYBACK:
+			case VSS_ISTREAM_CMD_START_RECORD:
+			case VSS_ISTREAM_CMD_STOP_RECORD:
 				pr_debug("%s: cmd = 0x%x\n", __func__, ptr[0]);
 				v->cvs_state = CMD_STATUS_SUCCESS;
 				wake_up(&v->cvs_wait);
