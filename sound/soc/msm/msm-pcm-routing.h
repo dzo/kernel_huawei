@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2012, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2011, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -26,12 +26,6 @@
 #define LPASS_BE_AFE_PCM_TX "(Backend) RT_PROXY_DAI_002_TX"
 #define LPASS_BE_AUXPCM_RX "(Backend) AUX_PCM_RX"
 #define LPASS_BE_AUXPCM_TX "(Backend) AUX_PCM_TX"
-#define LPASS_BE_VOICE_PLAYBACK_TX "(Backend) VOICE_PLAYBACK_TX"
-#define LPASS_BE_INCALL_RECORD_RX "(Backend) INCALL_RECORD_TX"
-#define LPASS_BE_INCALL_RECORD_TX "(Backend) INCALL_RECORD_RX"
-#define LPASS_BE_SEC_I2S_RX "(Backend) SECONDARY_I2S_RX"
-
-#define LPASS_BE_MI2S_RX "(Backend) MI2S_RX"
 
 /* For multimedia front-ends, asm session is allocated dynamically.
  * Hence, asm session/multimedia front-end mapping has to be maintained.
@@ -68,11 +62,6 @@ enum {
 	MSM_BACKEND_DAI_AFE_PCM_TX,
 	MSM_BACKEND_DAI_AUXPCM_RX,
 	MSM_BACKEND_DAI_AUXPCM_TX,
-	MSM_BACKEND_DAI_VOICE_PLAYBACK_TX,
-	MSM_BACKEND_DAI_INCALL_RECORD_RX,
-	MSM_BACKEND_DAI_INCALL_RECORD_TX,
-	MSM_BACKEND_DAI_MI2S_RX,
-	MSM_BACKEND_DAI_SEC_I2S_RX,
 	MSM_BACKEND_DAI_MAX,
 };
 
@@ -85,6 +74,4 @@ void msm_pcm_routing_reg_phy_stream(int fedai_id, int dspst_id,
 void msm_pcm_routing_dereg_phy_stream(int fedai_id, int stream_type);
 
 int lpa_set_volume(unsigned volume);
-
-int msm_routing_check_backend_enabled(int fedai_id);
 #endif /*_MSM_PCM_H*/

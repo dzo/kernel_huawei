@@ -1,4 +1,3 @@
-/*< DTS2011051303410 dongchen 20110516 begin */
 /* Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -175,11 +174,9 @@ static struct platform_device msm_itty_mono_rx_device = {
 	.dev = { .platform_data = &snddev_itty_mono_rx_data },
 };
 
-/*< DTS2011092207134 dongchen 20110923 begin */
 static struct adie_codec_action_unit
 	ihs_stereo_speaker_stereo_rx_48KHz_osr256_actions[] =
 	HEADSET_STEREO_SPEAKER_STEREO_RX_CAPLESS_48000_OSR_256_C8860;
-/* DTS2011092207134 dongchen 20110923 end >*/
 
 
 static struct adie_codec_hwsetting_entry
@@ -199,9 +196,7 @@ static struct adie_codec_dev_profile ihs_stereo_speaker_stereo_rx_profile = {
 	.setting_sz = ARRAY_SIZE(ihs_stereo_speaker_stereo_rx_settings),
 };
 
-/*< DTS2011101304810 dongchen 20111013 begin */
 /* acdb_id from ACDB_ID_HEADSET_STEREO_PLUS_SPKR_STEREO_RX to ACDB_ID_HEADSET_STEREO_PLUS_SPKR_MONO_RX */
-/*< DTS2011061605311 dongchen 20110614 begin */
 /* set msm_snddev_poweramp_4music_on as pamp_on func */
 static struct snddev_icodec_data snddev_ihs_stereo_speaker_stereo_rx_data = {
 	.capability = (SNDDEV_CAP_RX | SNDDEV_CAP_VOICE),
@@ -220,8 +215,6 @@ static struct snddev_icodec_data snddev_ihs_stereo_speaker_stereo_rx_data = {
 	.max_voice_rx_vol[VOC_WB_INDEX] = -500,
 	.min_voice_rx_vol[VOC_WB_INDEX] = -2000,
 };
-/* DTS2011061605311 dongchen 20110614 end >*/
-/* DTS2011101304810 dongchen 20111013 end >*/
 
 static struct platform_device msm_ihs_stereo_speaker_stereo_rx_device = {
 	.name = "snddev_icodec",
@@ -305,9 +298,7 @@ static struct adie_codec_dev_profile iearpiece_profile = {
 	.setting_sz = ARRAY_SIZE(iearpiece_settings),
 };
 
-/*< DTS2011092901202 dongchen 20110929 begin */
 /* min rx volume from -9 to -4 */
-/*< DTS2011062505020 dongchen 20110625 begin */
 /* rx volume from -7dB to 6dB */
 static struct snddev_icodec_data snddev_iearpiece_data = {
 	.capability = (SNDDEV_CAP_RX | SNDDEV_CAP_VOICE),
@@ -327,8 +318,6 @@ static struct snddev_icodec_data snddev_iearpiece_data = {
 	.max_voice_rx_vol[VOC_WB_INDEX] = -100,
 	.min_voice_rx_vol[VOC_WB_INDEX] = -1100,
 };
-/* DTS2011062505020 dongchen 20110625 end >*/
-/* DTS2011092901202 dongchen 20110929 end >*/
 
 static struct platform_device msm_iearpiece_device = {
 	.name = "snddev_icodec",
@@ -396,9 +385,7 @@ static struct adie_codec_dev_profile ispkr_stereo_profile = {
 	.setting_sz = ARRAY_SIZE(ispkr_stereo_settings),
 };
 
-/*< DTS2011092901202 dongchen 20110929 begin */
 /* min volume from -17 to -12 */
-/*< DTS2011053005461 dongchen 20110530 begin */
 static struct snddev_icodec_data snddev_ispkr_stereo_data = {
 	.capability = (SNDDEV_CAP_RX | SNDDEV_CAP_VOICE),
 	.name = "speaker_stereo_rx",
@@ -416,8 +403,6 @@ static struct snddev_icodec_data snddev_ispkr_stereo_data = {
 	.max_voice_rx_vol[VOC_WB_INDEX] = -200,
 	.min_voice_rx_vol[VOC_WB_INDEX] = -1200
 };
-/* DTS2011053005461 dongchen 20110530 end >*/
-/* DTS2011092901202 dongchen 20110929 end >*/
 
 static struct platform_device msm_ispkr_stereo_device = {
 	.name = "snddev_icodec",
@@ -506,9 +491,7 @@ static struct adie_codec_dev_profile headset_ab_cpls_profile = {
 	.setting_sz = ARRAY_SIZE(headset_ab_cpls_settings),
 };
 
-/*< DTS2011101600449 dongchen 20111017 begin */
 /* rx volume from -4dB to -7dB */
-/*< DTS2011062505020 dongchen 20110625 begin */
 /* rx volume from -7dB to -4dB */
 static struct snddev_icodec_data snddev_ihs_stereo_rx_data = {
 	.capability = (SNDDEV_CAP_RX | SNDDEV_CAP_VOICE),
@@ -530,8 +513,6 @@ static struct snddev_icodec_data snddev_ihs_stereo_rx_data = {
 	.max_voice_rx_vol[VOC_WB_INDEX] = -1400,
 	.min_voice_rx_vol[VOC_WB_INDEX] = -2900,
 };
-/* DTS2011062505020 dongchen 20110625 end >*/
-/* DTS2011101600449 dongchen 20111017 end >*/
 
 static struct platform_device msm_headset_stereo_device = {
 	.name = "snddev_icodec",
@@ -591,10 +572,8 @@ static struct platform_device msm_idual_mic_broadside_device = {
 };
 
 /* SPEAKER MUSIC STEREO DEVICE */
-/*< DTS2011050903865 dongchen 20110513 begin */
 static struct adie_codec_action_unit ispkr_music_stereo_48KHz_osr256_actions[] =
 	SPEAKER_PRI_MUSIC_STEREO_48000_OSR_256_C8860;
-/* DTS2011050903865 dongchen 20110513 end >*/
 
 static struct adie_codec_hwsetting_entry ispkr_music_stereo_settings[] = {
 	{
@@ -611,9 +590,7 @@ static struct adie_codec_dev_profile ispkr_music_stereo_profile = {
 	.setting_sz = ARRAY_SIZE(ispkr_music_stereo_settings),
 };
 
-/*< DTS2011061605311 dongchen 20110614 begin */
 /* set ACDB_ID_SPKR_PHONE_MUSIC_MONO as acdb_id */
-/*< DTS2011053005461 dongchen 20110530 begin */
 static struct snddev_icodec_data snddev_ispkr_music_stereo_data = {
 	.capability = (SNDDEV_CAP_RX | SNDDEV_CAP_VOICE),
 	.name = "speaker_music_rx",
@@ -631,8 +608,6 @@ static struct snddev_icodec_data snddev_ispkr_music_stereo_data = {
 	.max_voice_rx_vol[VOC_WB_INDEX] = 1000,
 	.min_voice_rx_vol[VOC_WB_INDEX] = -500
 };
-/* DTS2011053005461 dongchen 20110530 end >*/
-/* DTS2011061605311 dongchen 20110614 end >*/
 
 static struct platform_device msm_ispkr_music_stereo_device = {
 	.name = "snddev_icodec",
@@ -659,7 +634,6 @@ static struct adie_codec_dev_profile headset_ab_cpls_music_profile = {
 	.setting_sz = ARRAY_SIZE(headset_ab_cpls_music_settings),
 };
 
-/*< DTS2011061605311 dongchen 20110614 begin */
 /* set ACDB_ID_HEADSET_SPKR_MUSIC_STEREO as acdb_id */
 static struct snddev_icodec_data snddev_ihs_music_stereo_rx_data = {
 	.capability = (SNDDEV_CAP_RX | SNDDEV_CAP_VOICE),
@@ -681,7 +655,6 @@ static struct snddev_icodec_data snddev_ihs_music_stereo_rx_data = {
 	.max_voice_rx_vol[VOC_WB_INDEX] = -900,
 	.min_voice_rx_vol[VOC_WB_INDEX] = -2400,
 };
-/* DTS2011061605311 dongchen 20110614 end >*/
 
 static struct platform_device msm_headset_music_stereo_device = {
 	.name = "snddev_icodec",
@@ -708,9 +681,7 @@ static struct adie_codec_dev_profile iearpiece_hac_profile = {
 	.setting_sz = ARRAY_SIZE(iearpiece_hac_settings),
 };
 
-/*< DTS2011062505020 dongchen 20110625 begin */
 /* rx volume from -7dB to 6dB */
-/*< DTS2011061605311 dongchen 20110614 begin */
 /* set ACDB_ID_HANDSET_HAC_SPKR as acdb_id */
 static struct snddev_icodec_data snddev_iearpiece_hac_data = {
 	.capability = (SNDDEV_CAP_RX | SNDDEV_CAP_VOICE),
@@ -722,19 +693,15 @@ static struct snddev_icodec_data snddev_iearpiece_hac_data = {
 	.pmctl_id = NULL,
 	.pmctl_id_sz = 0,
 	.default_sample_rate = 48000,
-    /*<DTS2011060201308 yanghaimin 20110602, begin*/
     /* C8860 add hac gpio ctl func */
 	.pamp_on = msm_snddev_hac_on,  // when earpiece power on, pull up GPIO for hac
 	.pamp_off = msm_snddev_hac_off, // when earpiece power off, pull down GPIO for hac
-    /* DTS2011060201308 yanghaimin 20110602, end>*/
 	.property = SIDE_TONE_MASK,
 	.max_voice_rx_vol[VOC_NB_INDEX] = 600,
 	.min_voice_rx_vol[VOC_NB_INDEX] = -900,
 	.max_voice_rx_vol[VOC_WB_INDEX] = -100,
 	.min_voice_rx_vol[VOC_WB_INDEX] = -1600,
 };
-/* DTS2011061605311 dongchen 20110614 end >*/
-/* DTS2011062505020 dongchen 20110625 end >*/
 
 static struct platform_device msm_iearpiece_hac_device = {
 	.name = "snddev_icodec",
@@ -802,7 +769,6 @@ static struct adie_codec_dev_profile ifm_analog_speaker_profile = {
 	.setting_sz = ARRAY_SIZE(ifm_analog_speaker_settings),
 };
 
-/*< DTS2011082205270 dongchen 20110824 begin */
 /* set msm_snddev_poweramp_4music_on as pamp_on for FM Speaker */
 static struct snddev_icodec_data snddev_analog_fm_speaker_data = {
 	.capability = (SNDDEV_CAP_RX | SNDDEV_CAP_VOICE),
@@ -817,7 +783,6 @@ static struct snddev_icodec_data snddev_analog_fm_speaker_data = {
 	.pamp_on = &msm_snddev_poweramp_4music_on,
 	.pamp_off = &msm_snddev_poweramp_off,
 };
-/* DTS2011082205270 dongchen 20110824 end >*/
 
 static struct platform_device  msm_snddev_analog_fm_speaker_device = {
 	.name = "snddev_icodec",
@@ -888,4 +853,3 @@ struct platform_device *snd_devices_c8860[] __initdata = {
 
 int arraysize_c8860 = ARRAY_SIZE(snd_devices_c8860);
 
-/* DTS2011051303410 dongchen 20110516 end >*/

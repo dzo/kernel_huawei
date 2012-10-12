@@ -7,9 +7,7 @@ obj-y += snddev_icodec.o
 endif
 
 obj-$(CONFIG_MARIMBA_CODEC) += snddev_data_marimba.o
-# /*< DTS2011051303410 dongchen 20110516 begin */
 obj-$(CONFIG_TIMPANI_CODEC) += snddev_data_timpani.o snddev_data_timpani_c8860.o
-# /* DTS2011051303410 dongchen 20110516 end >*/
 
 obj-y += audio_pcm.o audpp.o audio_mp3.o audio_wma.o audio_aac.o audio_amrnb.o
 obj-y += audio_amrwb.o audio_wmapro.o audio_adpcm.o audio_evrc.o audio_qcelp.o

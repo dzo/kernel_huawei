@@ -95,12 +95,10 @@ static void event_handler(uint32_t opcode,
 		atomic_inc(&prtd->out_count);
 		wake_up(&the_locks.write_wait);
 		if (!atomic_read(&prtd->start)) {
-			atomic_set(&prtd->pending_buffer, 1);
+			prtd->pending_buffer = 1;
 			break;
 		} else
-			atomic_set(&prtd->pending_buffer, 0);
-		if (runtime->status->hw_ptr >= runtime->control->appl_ptr)
-			break;
+			prtd->pending_buffer = 0;
 		pr_debug("%s:writing %d bytes of buffer to dsp 2\n",
 				__func__, prtd->pcm_count);
 
@@ -123,7 +121,6 @@ static void event_handler(uint32_t opcode,
 		else
 			prtd->out_head =
 				(prtd->out_head + 1) & (runtime->periods - 1);
-		atomic_set(&prtd->pending_buffer, 0);
 		break;
 	}
 	case ASM_DATA_CMDRSP_EOS:
@@ -134,10 +131,8 @@ static void event_handler(uint32_t opcode,
 	case APR_BASIC_RSP_RESULT: {
 		switch (payload[0]) {
 		case ASM_SESSION_CMD_RUN: {
-			if (!atomic_read(&prtd->pending_buffer))
-				break;
-			if (runtime->status->hw_ptr >=
-				runtime->control->appl_ptr)
+			if (!prtd->pending_buffer &&
+				!atomic_read(&prtd->start))
 				break;
 			pr_debug("%s:writing %d bytes"
 				" of buffer to dsp\n",
@@ -157,7 +152,6 @@ static void event_handler(uint32_t opcode,
 				prtd->out_head =
 					(prtd->out_head + 1)
 					& (runtime->periods - 1);
-			atomic_set(&prtd->pending_buffer, 0);
 		}
 			break;
 		case ASM_STREAM_CMD_FLUSH:
@@ -309,7 +303,7 @@ static int msm_pcm_open(struct snd_pcm_substream *substream)
 		pr_debug("snd_pcm_hw_constraint_integer failed\n");
 
 	prtd->dsp_cnt = 0;
-	atomic_set(&prtd->pending_buffer, 1);
+	prtd->pending_buffer = 1;
 	runtime->private_data = prtd;
 	lpa_audio.prtd = prtd;
 	lpa_set_volume(lpa_audio.volume);
@@ -345,29 +339,10 @@ static int msm_pcm_playback_close(struct snd_pcm_substream *substream)
 	struct snd_soc_pcm_runtime *soc_prtd = substream->private_data;
 	struct msm_audio *prtd = runtime->private_data;
 	int dir = 0;
-	int rc = 0;
 
-	/*
-	If routing is still enabled, we need to issue EOS to
-	the DSP
-	To issue EOS to dsp, we need to be run state otherwise
-	EOS is not honored.
-	*/
-	if (msm_routing_check_backend_enabled(soc_prtd->dai_link->be_id)) {
-		rc = q6asm_run(prtd->audio_client, 0, 0, 0);
-		atomic_set(&prtd->pending_buffer, 0);
-		prtd->cmd_ack = 0;
-		q6asm_cmd_nowait(prtd->audio_client, CMD_EOS);
-		pr_debug("%s\n", __func__);
-		rc = wait_event_timeout(the_locks.eos_wait,
-			prtd->cmd_ack, 5 * HZ);
-		if (rc < 0)
-			pr_err("EOS cmd timeout\n");
-		prtd->pcm_irq_pos = 0;
-	}
+	pr_debug("%s\n", __func__);
 
 	dir = IN;
-	atomic_set(&prtd->pending_buffer, 0);
 	lpa_audio.prtd = NULL;
 	q6asm_cmd(prtd->audio_client, CMD_CLOSE);
 	q6asm_audio_client_buf_free_contiguous(dir,
@@ -485,7 +460,6 @@ static int msm_pcm_ioctl(struct snd_pcm_substream *substream,
 
 	switch (cmd) {
 	case SNDRV_PCM_IOCTL1_RESET:
-		prtd->cmd_ack = 0;
 		rc = q6asm_cmd(prtd->audio_client, CMD_FLUSH);
 		if (rc < 0)
 			pr_err("%s: flush cmd failed rc=%d\n", __func__, rc);

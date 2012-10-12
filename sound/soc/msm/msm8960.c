@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2012, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2011, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -17,7 +17,6 @@
 #include <linux/platform_device.h>
 #include <linux/gpio.h>
 #include <linux/mfd/pm8xxx/pm8921.h>
-#include <linux/slab.h>
 #include <sound/core.h>
 #include <sound/soc.h>
 #include <sound/soc-dapm.h>
@@ -25,7 +24,6 @@
 #include <sound/pcm.h>
 #include <sound/jack.h>
 #include <asm/mach-types.h>
-#include <mach/socinfo.h>
 #include "msm-pcm-routing.h"
 #include "../codecs/wcd9310.h"
 
@@ -53,11 +51,6 @@
 #define GPIO_AUX_PCM_SYNC 65
 #define GPIO_AUX_PCM_CLK 66
 
-#define TABLA_EXT_CLK_RATE 12288000
-
-#define TABLA_MBHC_DEF_BUTTONS 8
-#define TABLA_MBHC_DEF_RLOADS 5
-
 static u32 top_spk_pamp_gpio  = PM8921_GPIO_PM_TO_SYS(18);
 static u32 bottom_spk_pamp_gpio = PM8921_GPIO_PM_TO_SYS(19);
 static int msm8960_spk_control;
@@ -69,6 +62,17 @@ static int msm8960_slim_0_tx_ch = 1;
 static int msm8960_btsco_rate = BTSCO_RATE_8KHZ;
 static int msm8960_btsco_ch = 1;
 
+struct tabla_mbhc_calibration tabla_cal = {
+	.bias = TABLA_MICBIAS2,
+	.tldoh = 100,
+	.bg_fast_settle = 100,
+	.mic_current = TABLA_PID_MIC_5_UA,
+	.mic_pid = 100,
+	.hph_current = TABLA_PID_MIC_5_UA,
+	.setup_plug_removal_delay = 1000000,
+	.shutdown_plug_removal = 100000,
+};
+
 static struct clk *codec_clk;
 static int clk_users;
 
@@ -76,8 +80,6 @@ static int msm8960_headset_gpios_configured;
 
 static struct snd_soc_jack hs_jack;
 static struct snd_soc_jack button_jack;
-
-static void *tabla_mbhc_cal;
 
 static void msm8960_enable_ext_spk_amp_gpio(u32 spk_amp_gpio)
 {
@@ -299,41 +301,6 @@ static int msm8960_spkramp_event(struct snd_soc_dapm_widget *w,
 	}
 	return 0;
 }
-int msm8960_enable_codec_ext_clk(
-		struct snd_soc_codec *codec, int enable)
-{
-	pr_debug("%s: enable = %d\n", __func__, enable);
-	if (enable) {
-		clk_users++;
-		pr_debug("%s: clk_users = %d\n", __func__, clk_users);
-		if (clk_users != 1)
-			return 0;
-
-		codec_clk = clk_get(NULL, "i2s_spkr_osr_clk");
-		if (codec_clk) {
-			clk_set_rate(codec_clk, TABLA_EXT_CLK_RATE);
-			clk_enable(codec_clk);
-			tabla_mclk_enable(codec, 1);
-		} else {
-			pr_err("%s: Error setting Tabla MCLK\n", __func__);
-			clk_users--;
-			return -EINVAL;
-		}
-	} else {
-		pr_debug("%s: clk_users = %d\n", __func__, clk_users);
-		if (clk_users == 0)
-			return 0;
-		clk_users--;
-		if (!clk_users) {
-			pr_debug("%s: disabling MCLK. clk_users = %d\n",
-					 __func__, clk_users);
-			clk_disable(codec_clk);
-			clk_put(codec_clk);
-			tabla_mclk_enable(codec, 0);
-		}
-	}
-	return 0;
-}
 
 static int msm8960_mclk_event(struct snd_soc_dapm_widget *w,
 		struct snd_kcontrol *kcontrol, int event)
@@ -342,9 +309,43 @@ static int msm8960_mclk_event(struct snd_soc_dapm_widget *w,
 
 	switch (event) {
 	case SND_SOC_DAPM_PRE_PMU:
-		return msm8960_enable_codec_ext_clk(w->codec, 1);
+
+		clk_users++;
+		pr_debug("%s: clk_users = %d\n", __func__, clk_users);
+
+		if (clk_users != 1)
+			return 0;
+
+		codec_clk = clk_get(NULL, "i2s_spkr_osr_clk");
+		if (codec_clk) {
+			clk_set_rate(codec_clk, 12288000);
+			clk_enable(codec_clk);
+			tabla_mclk_enable(w->codec, 1);
+
+		} else {
+			pr_err("%s: Error setting Tabla MCLK\n", __func__);
+			clk_users--;
+			return -EINVAL;
+		}
+		break;
 	case SND_SOC_DAPM_POST_PMD:
-		return msm8960_enable_codec_ext_clk(w->codec, 0);
+
+		pr_debug("%s: clk_users = %d\n", __func__, clk_users);
+
+		if (clk_users == 0)
+			return 0;
+
+		clk_users--;
+
+		if (!clk_users) {
+			pr_debug("%s: disabling MCLK. clk_users = %d\n",
+					__func__, clk_users);
+
+			clk_disable(codec_clk);
+			clk_put(codec_clk);
+			tabla_mclk_enable(w->codec, 0);
+		}
+		break;
 	}
 	return 0;
 }
@@ -479,7 +480,7 @@ static int msm8960_slim_0_rx_ch_get(struct snd_kcontrol *kcontrol,
 	struct snd_ctl_elem_value *ucontrol)
 {
 	pr_debug("%s: msm8960_slim_0_rx_ch  = %d\n", __func__,
-		 msm8960_slim_0_rx_ch);
+			msm8960_slim_0_rx_ch);
 	ucontrol->value.integer.value[0] = msm8960_slim_0_rx_ch - 1;
 	return 0;
 }
@@ -490,7 +491,7 @@ static int msm8960_slim_0_rx_ch_put(struct snd_kcontrol *kcontrol,
 	msm8960_slim_0_rx_ch = ucontrol->value.integer.value[0] + 1;
 
 	pr_debug("%s: msm8960_slim_0_rx_ch = %d\n", __func__,
-		 msm8960_slim_0_rx_ch);
+			msm8960_slim_0_rx_ch);
 	return 1;
 }
 
@@ -498,7 +499,7 @@ static int msm8960_slim_0_tx_ch_get(struct snd_kcontrol *kcontrol,
 	struct snd_ctl_elem_value *ucontrol)
 {
 	pr_debug("%s: msm8960_slim_0_tx_ch  = %d\n", __func__,
-		 msm8960_slim_0_tx_ch);
+			msm8960_slim_0_tx_ch);
 	ucontrol->value.integer.value[0] = msm8960_slim_0_tx_ch - 1;
 	return 0;
 }
@@ -509,14 +510,15 @@ static int msm8960_slim_0_tx_ch_put(struct snd_kcontrol *kcontrol,
 	msm8960_slim_0_tx_ch = ucontrol->value.integer.value[0] + 1;
 
 	pr_debug("%s: msm8960_slim_0_tx_ch = %d\n", __func__,
-		 msm8960_slim_0_tx_ch);
+			msm8960_slim_0_tx_ch);
 	return 1;
 }
 
 static int msm8960_btsco_rate_get(struct snd_kcontrol *kcontrol,
 				struct snd_ctl_elem_value *ucontrol)
 {
-	pr_debug("%s: msm8960_btsco_rate  = %d", __func__, msm8960_btsco_rate);
+	pr_debug("%s: msm8960_btsco_rate  = %d", __func__,
+					msm8960_btsco_rate);
 	ucontrol->value.integer.value[0] = msm8960_btsco_rate;
 	return 0;
 }
@@ -535,7 +537,8 @@ static int msm8960_btsco_rate_put(struct snd_kcontrol *kcontrol,
 		msm8960_btsco_rate = BTSCO_RATE_8KHZ;
 		break;
 	}
-	pr_debug("%s: msm8960_btsco_rate = %d\n", __func__, msm8960_btsco_rate);
+	pr_debug("%s: msm8960_btsco_rate = %d\n", __func__,
+					msm8960_btsco_rate);
 	return 0;
 }
 
@@ -564,83 +567,6 @@ static int msm8960_btsco_init(struct snd_soc_pcm_runtime *rtd)
 	if (err < 0)
 		return err;
 	return 0;
-}
-
-static void *def_tabla_mbhc_cal(void)
-{
-	void *tabla_cal;
-	struct tabla_mbhc_btn_detect_cfg *btn_cfg;
-	u16 *btn_low, *btn_high;
-	u8 *n_ready, *n_cic, *gain;
-
-	tabla_cal = kzalloc(TABLA_MBHC_CAL_SIZE(TABLA_MBHC_DEF_BUTTONS,
-						TABLA_MBHC_DEF_RLOADS),
-			    GFP_KERNEL);
-	if (!tabla_cal) {
-		pr_err("%s: out of memory\n", __func__);
-		return NULL;
-	}
-
-#define S(X, Y) ((TABLA_MBHC_CAL_GENERAL_PTR(tabla_cal)->X) = (Y))
-	S(t_ldoh, 100);
-	S(t_bg_fast_settle, 100);
-	S(t_shutdown_plug_rem, 255);
-	S(mbhc_nsa, 4);
-	S(mbhc_navg, 4);
-#undef S
-#define S(X, Y) ((TABLA_MBHC_CAL_PLUG_DET_PTR(tabla_cal)->X) = (Y))
-	S(mic_current, TABLA_PID_MIC_5_UA);
-	S(hph_current, TABLA_PID_MIC_5_UA);
-	S(t_mic_pid, 100);
-	S(t_ins_complete, 250);
-	S(t_ins_retry, 200);
-#undef S
-#define S(X, Y) ((TABLA_MBHC_CAL_PLUG_TYPE_PTR(tabla_cal)->X) = (Y))
-	S(v_no_mic, 30);
-	S(v_hs_max, 1550);
-#undef S
-#define S(X, Y) ((TABLA_MBHC_CAL_BTN_DET_PTR(tabla_cal)->X) = (Y))
-	S(c[0], 62);
-	S(c[1], 124);
-	S(nc, 1);
-	S(n_meas, 3);
-	S(mbhc_nsc, 11);
-	S(n_btn_meas, 1);
-	S(n_btn_con, 2);
-	S(num_btn, TABLA_MBHC_DEF_BUTTONS);
-	S(v_btn_press_delta_sta, 100);
-	S(v_btn_press_delta_cic, 50);
-#undef S
-	btn_cfg = TABLA_MBHC_CAL_BTN_DET_PTR(tabla_cal);
-	btn_low = tabla_mbhc_cal_btn_det_mp(btn_cfg, TABLA_BTN_DET_V_BTN_LOW);
-	btn_high = tabla_mbhc_cal_btn_det_mp(btn_cfg, TABLA_BTN_DET_V_BTN_HIGH);
-	btn_low[0] = -50;
-	btn_high[0] = 10;
-	btn_low[1] = 11;
-	btn_high[1] = 38;
-	btn_low[2] = 39;
-	btn_high[2] = 64;
-	btn_low[3] = 65;
-	btn_high[3] = 91;
-	btn_low[4] = 92;
-	btn_high[4] = 115;
-	btn_low[5] = 116;
-	btn_high[5] = 141;
-	btn_low[6] = 142;
-	btn_high[6] = 163;
-	btn_low[7] = 164;
-	btn_high[7] = 250;
-	n_ready = tabla_mbhc_cal_btn_det_mp(btn_cfg, TABLA_BTN_DET_N_READY);
-	n_ready[0] = 48;
-	n_ready[1] = 38;
-	n_cic = tabla_mbhc_cal_btn_det_mp(btn_cfg, TABLA_BTN_DET_N_CIC);
-	n_cic[0] = 60;
-	n_cic[1] = 47;
-	gain = tabla_mbhc_cal_btn_det_mp(btn_cfg, TABLA_BTN_DET_GAIN);
-	gain[0] = 11;
-	gain[1] = 9;
-
-	return tabla_cal;
 }
 
 static int msm8960_audrx_init(struct snd_soc_pcm_runtime *rtd)
@@ -677,24 +603,21 @@ static int msm8960_audrx_init(struct snd_soc_pcm_runtime *rtd)
 	snd_soc_dapm_sync(dapm);
 
 	err = snd_soc_jack_new(codec, "Headset Jack",
-			       (SND_JACK_HEADSET | SND_JACK_OC_HPHL |
-				SND_JACK_OC_HPHR),
-			       &hs_jack);
+		(SND_JACK_HEADSET | SND_JACK_OC_HPHL | SND_JACK_OC_HPHR),
+		&hs_jack);
 	if (err) {
 		pr_err("failed to create new jack\n");
 		return err;
 	}
 
 	err = snd_soc_jack_new(codec, "Button Jack",
-			       TABLA_JACK_BUTTON_MASK, &button_jack);
+				SND_JACK_BTN_0, &button_jack);
 	if (err) {
 		pr_err("failed to create new jack\n");
 		return err;
 	}
 
-	tabla_hs_detect(codec, &hs_jack, &button_jack, tabla_mbhc_cal,
-			TABLA_MICBIAS2, msm8960_enable_codec_ext_clk, 0,
-			TABLA_EXT_CLK_RATE);
+	tabla_hs_detect(codec, &hs_jack, &button_jack, &tabla_cal);
 
 	return 0;
 }
@@ -716,8 +639,7 @@ static struct snd_soc_dsp_link fe_media = {
 	},
 };
 
-/* bi-directional media definition for hostless PCM device */
-static struct snd_soc_dsp_link bidir_hl_media = {
+static struct snd_soc_dsp_link slimbus0_hl_media = {
 	.playback = true,
 	.capture = true,
 	.trigger = {
@@ -726,8 +648,9 @@ static struct snd_soc_dsp_link bidir_hl_media = {
 	},
 };
 
-static struct snd_soc_dsp_link hdmi_rx_hl = {
+static struct snd_soc_dsp_link int_fm_hl_media = {
 	.playback = true,
+	.capture = true,
 	.trigger = {
 		SND_SOC_DSP_TRIGGER_POST,
 		SND_SOC_DSP_TRIGGER_POST
@@ -773,23 +696,6 @@ static int msm8960_be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
 	SNDRV_PCM_HW_PARAM_RATE);
 
 	pr_debug("%s()\n", __func__);
-	rate->min = rate->max = 48000;
-
-	return 0;
-}
-
-static int msm8960_hdmi_be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
-					struct snd_pcm_hw_params *params)
-{
-	struct snd_interval *rate = hw_param_interval(params,
-					SNDRV_PCM_HW_PARAM_RATE);
-
-	struct snd_interval *channels = hw_param_interval(params,
-					SNDRV_PCM_HW_PARAM_CHANNELS);
-
-	pr_debug("%s channels->min %u channels->max %u ()\n", __func__,
-			channels->min, channels->max);
-
 	rate->min = rate->max = 48000;
 
 	return 0;
@@ -938,7 +844,7 @@ static struct snd_soc_dai_link msm8960_dai[] = {
 		.name = "MSM8960 Media2",
 		.stream_name = "MultiMedia2",
 		.cpu_dai_name	= "MultiMedia2",
-		.platform_name  = "msm-multi-ch-pcm-dsp",
+		.platform_name  = "msm-pcm-dsp",
 		.dynamic = 1,
 		.dsp_link = &fe_media,
 		.be_id = MSM_FRONTEND_DAI_MULTIMEDIA2,
@@ -979,7 +885,7 @@ static struct snd_soc_dai_link msm8960_dai[] = {
 		.cpu_dai_name	= "SLIMBUS0_HOSTLESS",
 		.platform_name  = "msm-pcm-hostless",
 		.dynamic = 1,
-		.dsp_link = &bidir_hl_media,
+		.dsp_link = &slimbus0_hl_media,
 		.no_host_mode = SND_SOC_DAI_LINK_NO_HOST,
 		.ignore_suspend = 1,
 		/* .be_id = do not care */
@@ -990,7 +896,7 @@ static struct snd_soc_dai_link msm8960_dai[] = {
 		.cpu_dai_name	= "INT_FM_HOSTLESS",
 		.platform_name  = "msm-pcm-hostless",
 		.dynamic = 1,
-		.dsp_link = &bidir_hl_media,
+		.dsp_link = &int_fm_hl_media,
 		.no_host_mode = SND_SOC_DAI_LINK_NO_HOST,
 		.ignore_suspend = 1,
 		/* .be_id = do not care */
@@ -1021,28 +927,6 @@ static struct snd_soc_dai_link msm8960_dai[] = {
 		.dynamic = 1,
 		.dsp_link = &lpa_fe_media,
 		.be_id = MSM_FRONTEND_DAI_MULTIMEDIA4,
-	},
-	{
-		.name = "AUXPCM Hostless",
-		.stream_name = "AUXPCM Hostless",
-		.cpu_dai_name	= "AUXPCM_HOSTLESS",
-		.platform_name  = "msm-pcm-hostless",
-		.dynamic = 1,
-		.dsp_link = &bidir_hl_media,
-		.no_host_mode = SND_SOC_DAI_LINK_NO_HOST,
-		.ignore_suspend = 1,
-	},
-	/* HDMI Hostless */
-	{
-		.name = "HDMI_RX_HOSTLESS",
-		.stream_name = "HDMI_RX_HOSTLESS",
-		.cpu_dai_name = "HDMI_HOSTLESS",
-		.platform_name = "msm-pcm-hostless",
-		.dynamic = 1,
-		.dsp_link = &hdmi_rx_hl,
-		.no_host_mode = SND_SOC_DAI_LINK_NO_HOST,
-		.no_codec = 1,
-		.ignore_suspend = 1,
 	},
 	/* Backend DAI Links */
 	{
@@ -1120,14 +1004,14 @@ static struct snd_soc_dai_link msm8960_dai[] = {
 	{
 		.name = LPASS_BE_HDMI,
 		.stream_name = "HDMI Playback",
-		.cpu_dai_name = "msm-dai-q6-hdmi.8",
+		.cpu_dai_name = "msm-dai-q6.8",
 		.platform_name = "msm-pcm-routing",
 		.codec_name     = "msm-stub-codec.1",
 		.codec_dai_name = "msm-stub-rx",
 		.no_pcm = 1,
 		.no_codec = 1,
 		.be_id = MSM_BACKEND_DAI_HDMI_RX,
-		.be_hw_params_fixup = msm8960_hdmi_be_hw_params_fixup,
+		.be_hw_params_fixup = msm8960_be_hw_params_fixup,
 	},
 	/* Backend AFE DAI Links */
 	{
@@ -1175,45 +1059,6 @@ static struct snd_soc_dai_link msm8960_dai[] = {
 		.no_pcm = 1,
 		.be_id = MSM_BACKEND_DAI_AUXPCM_TX,
 		.be_hw_params_fixup = msm8960_auxpcm_be_params_fixup,
-	},
-	/* Incall Music BACK END DAI Link */
-	{
-		.name = LPASS_BE_VOICE_PLAYBACK_TX,
-		.stream_name = "Voice Farend Playback",
-		.cpu_dai_name = "msm-dai-q6.32773",
-		.platform_name = "msm-pcm-routing",
-		.codec_name     = "msm-stub-codec.1",
-		.codec_dai_name = "msm-stub-rx",
-		.no_pcm = 1,
-		.no_codec = 1,
-		.be_id = MSM_BACKEND_DAI_VOICE_PLAYBACK_TX,
-		.be_hw_params_fixup = msm8960_be_hw_params_fixup,
-	},
-	/* Incall Record Uplink BACK END DAI Link */
-	{
-		.name = LPASS_BE_INCALL_RECORD_TX,
-		.stream_name = "Voice Uplink Capture",
-		.cpu_dai_name = "msm-dai-q6.32772",
-		.platform_name = "msm-pcm-routing",
-		.codec_name     = "msm-stub-codec.1",
-		.codec_dai_name = "msm-stub-tx",
-		.no_pcm = 1,
-		.no_codec = 1,
-		.be_id = MSM_BACKEND_DAI_INCALL_RECORD_TX,
-		.be_hw_params_fixup = msm8960_be_hw_params_fixup,
-	},
-	/* Incall Record Downlink BACK END DAI Link */
-	{
-		.name = LPASS_BE_INCALL_RECORD_RX,
-		.stream_name = "Voice Downlink Capture",
-		.cpu_dai_name = "msm-dai-q6.32771",
-		.platform_name = "msm-pcm-routing",
-		.codec_name     = "msm-stub-codec.1",
-		.codec_dai_name = "msm-stub-tx",
-		.no_pcm = 1,
-		.no_codec = 1,
-		.be_id = MSM_BACKEND_DAI_INCALL_RECORD_RX,
-		.be_hw_params_fixup = msm8960_be_hw_params_fixup,
 	},
 };
 
@@ -1280,21 +1125,9 @@ static int __init msm8960_audio_init(void)
 {
 	int ret;
 
-	if (!cpu_is_msm8960() && !cpu_is_msm8930()) {
-		pr_err("%s: Not the right machine type\n", __func__);
-		return -ENODEV ;
-	}
-
-	tabla_mbhc_cal = def_tabla_mbhc_cal();
-	if (!tabla_mbhc_cal) {
-		pr_err("Calibration data allocation failed\n");
-		return -ENOMEM;
-	}
-
 	msm8960_snd_device = platform_device_alloc("soc-audio", 0);
 	if (!msm8960_snd_device) {
 		pr_err("Platform device allocation failed\n");
-		kfree(tabla_mbhc_cal);
 		return -ENOMEM;
 	}
 
@@ -1302,7 +1135,6 @@ static int __init msm8960_audio_init(void)
 	ret = platform_device_add(msm8960_snd_device);
 	if (ret) {
 		platform_device_put(msm8960_snd_device);
-		kfree(tabla_mbhc_cal);
 		return ret;
 	}
 
@@ -1319,13 +1151,8 @@ module_init(msm8960_audio_init);
 
 static void __exit msm8960_audio_exit(void)
 {
-	if (!cpu_is_msm8960() && !cpu_is_msm8930()) {
-		pr_err("%s: Not the right machine type\n", __func__);
-		return ;
-	}
 	msm8960_free_headset_mic_gpios();
 	platform_device_unregister(msm8960_snd_device);
-	kfree(tabla_mbhc_cal);
 }
 module_exit(msm8960_audio_exit);
 

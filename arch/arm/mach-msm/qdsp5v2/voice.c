@@ -494,7 +494,7 @@ static int voice_cmd_device_info(struct voice_data *v)
 	cmd.rx_sample = v->dev_rx.sample/1000;
 	cmd.tx_sample = v->dev_tx.sample/1000;
 
-	MM_DBG("rx_vol=%d, rx_sample=%d\n", cmd.rx_volume, v->dev_rx.sample);
+	MM_INFO("rx_vol=%d, rx_sample=%d\n", cmd.rx_volume, v->dev_rx.sample);
 
 	err = dalrpc_fcn_5(VOICE_DALRPC_CMD, v->handle, &cmd,
 			 sizeof(struct voice_device));

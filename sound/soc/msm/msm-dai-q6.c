@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2012, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2011, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -23,6 +23,7 @@
 #include <sound/soc.h>
 #include <sound/apr_audio.h>
 #include <sound/q6afe.h>
+#include <sound/q6adm.h>
 #include <sound/msm-dai-q6.h>
 #include <mach/clk.h>
 
@@ -39,17 +40,6 @@ struct msm_dai_q6_dai_data {
 };
 
 static struct clk *pcm_clk;
-
-static u8 num_of_bits_set(u8 sd_line_mask)
-{
-	u8 num_bits_set = 0;
-
-	while (sd_line_mask) {
-		num_bits_set++;
-		sd_line_mask = sd_line_mask & (sd_line_mask - 1);
-	}
-	return num_bits_set;
-}
 
 static int msm_dai_q6_cdc_hw_params(struct snd_pcm_hw_params *params,
 				    struct snd_soc_dai *dai, int stream)
@@ -76,116 +66,8 @@ static int msm_dai_q6_cdc_hw_params(struct snd_pcm_hw_params *params,
 	/* Q6 only supports 16 as now */
 	dai_data->port_config.mi2s.bitwidth = 16;
 	dai_data->port_config.mi2s.line = 1;
-	return 0;
-}
-
-static int msm_dai_q6_mi2s_hw_params(struct snd_pcm_hw_params *params,
-				    struct snd_soc_dai *dai, int stream)
-{
-	struct msm_dai_q6_dai_data *dai_data = dev_get_drvdata(dai->dev);
-	struct msm_mi2s_data *mi2s_pdata =
-			(struct msm_mi2s_data *) dai->dev->platform_data;
-
-	dai_data->channels = params_channels(params);
-	if (num_of_bits_set(mi2s_pdata->sd_lines) == 1) {
-		switch (dai_data->channels) {
-		case 2:
-			dai_data->port_config.mi2s.channel = MSM_AFE_STEREO;
-			break;
-		case 1:
-			dai_data->port_config.mi2s.channel = MSM_AFE_MONO;
-			break;
-		default:
-			pr_warn("greater than stereo has not been validated");
-			break;
-		}
-	}
-	/* Q6 only supports 16 as now */
-	dai_data->port_config.mi2s.bitwidth = 16;
 
 	return 0;
-}
-
-static int msm_dai_q6_mi2s_platform_data_validation(
-					struct snd_soc_dai *dai)
-{
-	u8 num_of_sd_lines;
-	struct msm_dai_q6_dai_data *dai_data = dev_get_drvdata(dai->dev);
-	struct msm_mi2s_data *mi2s_pdata =
-			(struct msm_mi2s_data *)dai->dev->platform_data;
-	struct snd_soc_dai_driver *dai_driver =
-			(struct snd_soc_dai_driver *)dai->driver;
-
-	num_of_sd_lines = num_of_bits_set(mi2s_pdata->sd_lines);
-
-	switch (num_of_sd_lines) {
-	case 1:
-		switch (mi2s_pdata->sd_lines) {
-		case MSM_MI2S_SD0:
-			dai_data->port_config.mi2s.line = AFE_I2S_SD0;
-			break;
-		case MSM_MI2S_SD1:
-			dai_data->port_config.mi2s.line = AFE_I2S_SD1;
-			break;
-		case MSM_MI2S_SD2:
-			dai_data->port_config.mi2s.line = AFE_I2S_SD2;
-			break;
-		case MSM_MI2S_SD3:
-			dai_data->port_config.mi2s.line = AFE_I2S_SD3;
-			break;
-		default:
-			pr_err("%s: invalid SD line\n",
-				   __func__);
-			goto error_invalid_data;
-		}
-		break;
-	case 2:
-		switch (mi2s_pdata->sd_lines) {
-		case MSM_MI2S_SD0 | MSM_MI2S_SD1:
-			dai_data->port_config.mi2s.line = AFE_I2S_QUAD01;
-			break;
-		case MSM_MI2S_SD2 | MSM_MI2S_SD3:
-			dai_data->port_config.mi2s.line = AFE_I2S_QUAD23;
-			break;
-		default:
-			pr_err("%s: invalid SD line\n",
-				   __func__);
-			goto error_invalid_data;
-		}
-		break;
-	case 3:
-		switch (mi2s_pdata->sd_lines) {
-		case MSM_MI2S_SD0 | MSM_MI2S_SD1 | MSM_MI2S_SD2:
-			dai_data->port_config.mi2s.line = AFE_I2S_6CHS;
-			break;
-		default:
-			pr_err("%s: invalid SD lines\n",
-				   __func__);
-			goto error_invalid_data;
-		}
-		break;
-	case 4:
-		switch (mi2s_pdata->sd_lines) {
-		case MSM_MI2S_SD0 | MSM_MI2S_SD1 | MSM_MI2S_SD2 | MSM_MI2S_SD3:
-			dai_data->port_config.mi2s.line = AFE_I2S_8CHS;
-			break;
-		default:
-			pr_err("%s: invalid SD lines\n",
-				   __func__);
-			goto error_invalid_data;
-		}
-		break;
-	default:
-		pr_err("%s: invalid SD lines\n", __func__);
-		goto error_invalid_data;
-	}
-	if (mi2s_pdata->capability == MSM_MI2S_CAP_RX)
-		dai_driver->playback.channels_max = num_of_sd_lines << 1;
-
-	return 0;
-
-error_invalid_data:
-	return -EINVAL;
 }
 
 static int msm_dai_q6_cdc_set_fmt(struct snd_soc_dai *dai, unsigned int fmt)
@@ -206,55 +88,56 @@ static int msm_dai_q6_cdc_set_fmt(struct snd_soc_dai *dai, unsigned int fmt)
 	return 0;
 }
 
+static int msm_dai_q6_hdmi_hw_params(struct snd_pcm_hw_params *params,
+	struct snd_soc_dai *dai)
+{
+	struct msm_dai_q6_dai_data *dai_data = dev_get_drvdata(dai->dev);
+
+	dev_dbg(dai->dev, "%s start HDMI port\n", __func__);
+
+	dai_data->channels = params_channels(params);
+	switch (dai_data->channels) {
+	case 2:
+		dai_data->port_config.hdmi.channel_mode = 0; /* Put in macro */
+		break;
+	default:
+		return -EINVAL;
+		break;
+	}
+
+	/* Q6 only supports 16 as now */
+	dai_data->port_config.hdmi.bitwidth = 16;
+	dai_data->port_config.hdmi.data_type = 0;
+	dai_data->rate = params_rate(params);
+
+	return 0;
+}
 
 static int msm_dai_q6_slim_bus_hw_params(struct snd_pcm_hw_params *params,
 				    struct snd_soc_dai *dai, int stream)
 {
 	struct msm_dai_q6_dai_data *dai_data = dev_get_drvdata(dai->dev);
 	u8 pgd_la, inf_la;
-	u16 *slave_port_mapping;
 
 	memset(dai_data->port_config.slimbus.slave_port_mapping, 0,
 		sizeof(dai_data->port_config.slimbus.slave_port_mapping));
 
 	dai_data->channels = params_channels(params);
-
-	slave_port_mapping = dai_data->port_config.slimbus.slave_port_mapping;
-
 	switch (dai_data->channels) {
-	case 4:
-		if (dai->id == SLIMBUS_0_TX) {
-			slave_port_mapping[0] = 7;
-			slave_port_mapping[1] = 8;
-			slave_port_mapping[2] = 9;
-			slave_port_mapping[3] = 10;
-		} else {
-			return -EINVAL;
-		}
-		break;
-	case 3:
-		if (dai->id == SLIMBUS_0_TX) {
-			slave_port_mapping[0] = 7;
-			slave_port_mapping[1] = 8;
-			slave_port_mapping[2] = 9;
-		} else {
-			return -EINVAL;
-		}
-		break;
 	case 2:
 		if (dai->id == SLIMBUS_0_RX) {
-			slave_port_mapping[0] = 1;
-			slave_port_mapping[1] = 2;
+			dai_data->port_config.slimbus.slave_port_mapping[0] = 1;
+			dai_data->port_config.slimbus.slave_port_mapping[1] = 2;
 		} else {
-			slave_port_mapping[0] = 7;
-			slave_port_mapping[1] = 8;
+			dai_data->port_config.slimbus.slave_port_mapping[0] = 7;
+			dai_data->port_config.slimbus.slave_port_mapping[1] = 8;
 		}
 		break;
 	case 1:
 		if (dai->id == SLIMBUS_0_RX)
-			slave_port_mapping[0] = 1;
+			dai_data->port_config.slimbus.slave_port_mapping[0] = 1;
 		else
-			slave_port_mapping[0] = 7;
+			dai_data->port_config.slimbus.slave_port_mapping[0] = 7;
 		break;
 	default:
 		return -EINVAL;
@@ -395,11 +278,10 @@ static int msm_dai_q6_hw_params(struct snd_pcm_substream *substream,
 	switch (dai->id) {
 	case PRIMARY_I2S_TX:
 	case PRIMARY_I2S_RX:
-	case SECONDARY_I2S_RX:
 		rc = msm_dai_q6_cdc_hw_params(params, dai, substream->stream);
 		break;
-	case MI2S_RX:
-		rc = msm_dai_q6_mi2s_hw_params(params, dai, substream->stream);
+	case HDMI_RX:
+		rc = msm_dai_q6_hdmi_hw_params(params, dai);
 		break;
 	case SLIMBUS_0_RX:
 	case SLIMBUS_0_TX:
@@ -418,11 +300,6 @@ static int msm_dai_q6_hw_params(struct snd_pcm_substream *substream,
 	case RT_PROXY_DAI_002_RX:
 		rc = msm_dai_q6_afe_rtproxy_hw_params(params, dai);
 		break;
-	case VOICE_PLAYBACK_TX:
-	case VOICE_RECORD_RX:
-	case VOICE_RECORD_TX:
-		rc = 0;
-		break;
 	default:
 		dev_err(dai->dev, "invalid AFE port ID\n");
 		rc = -EINVAL;
@@ -437,6 +314,10 @@ static void msm_dai_q6_auxpcm_shutdown(struct snd_pcm_substream *substream,
 {
 	struct msm_dai_q6_dai_data *dai_data = dev_get_drvdata(dai->dev);
 	int rc = 0;
+
+	rc = adm_close(dai->id);
+	if (IS_ERR_VALUE(rc))
+		dev_err(dai->dev, "fail to close ADM COPP\n");
 
 	pr_debug("%s: dai->id = %d", __func__, dai->id);
 
@@ -462,18 +343,7 @@ static void msm_dai_q6_shutdown(struct snd_pcm_substream *substream,
 	int rc = 0;
 
 	if (test_bit(STATUS_PORT_STARTED, dai_data->status_mask)) {
-		switch (dai->id) {
-		case VOICE_PLAYBACK_TX:
-		case VOICE_RECORD_TX:
-		case VOICE_RECORD_RX:
-			pr_debug("%s, stop pseudo port:%d\n",
-						__func__,  dai->id);
-			rc = afe_stop_pseudo_port(dai->id);
-			break;
-		default:
-			rc = afe_close(dai->id); /* can block */
-			break;
-		}
+		rc = afe_close(dai->id); /* can block */
 		if (IS_ERR_VALUE(rc))
 			dev_err(dai->dev, "fail to close AFE port\n");
 		pr_debug("%s: dai_data->status_mask = %ld\n", __func__,
@@ -608,17 +478,8 @@ static int msm_dai_q6_trigger(struct snd_pcm_substream *substream, int cmd,
 	case SNDRV_PCM_TRIGGER_RESUME:
 	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
 		if (!test_bit(STATUS_PORT_STARTED, dai_data->status_mask)) {
-			switch (dai->id) {
-			case VOICE_PLAYBACK_TX:
-			case VOICE_RECORD_TX:
-			case VOICE_RECORD_RX:
-				afe_pseudo_port_start_nowait(dai->id);
-				break;
-			default:
-				afe_port_start_nowait(dai->id,
-					&dai_data->port_config, dai_data->rate);
-				break;
-			}
+			afe_port_start_nowait(dai->id, &dai_data->port_config,
+				dai_data->rate);
 			set_bit(STATUS_PORT_STARTED,
 				dai_data->status_mask);
 		}
@@ -627,16 +488,7 @@ static int msm_dai_q6_trigger(struct snd_pcm_substream *substream, int cmd,
 	case SNDRV_PCM_TRIGGER_SUSPEND:
 	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
 		if (test_bit(STATUS_PORT_STARTED, dai_data->status_mask)) {
-			switch (dai->id) {
-			case VOICE_PLAYBACK_TX:
-			case VOICE_RECORD_TX:
-			case VOICE_RECORD_RX:
-				afe_pseudo_port_stop_nowait(dai->id);
-				break;
-			default:
-				afe_port_stop_nowait(dai->id);
-				break;
-			}
+			afe_port_stop_nowait(dai->id);
 			clear_bit(STATUS_PORT_STARTED,
 				dai_data->status_mask);
 		}
@@ -706,31 +558,6 @@ static int msm_dai_q6_dai_auxpcm_remove(struct snd_soc_dai *dai)
 
 	return 0;
 }
-static int msm_dai_q6_dai_mi2s_probe(struct snd_soc_dai *dai)
-{
-	struct msm_dai_q6_dai_data *dai_data;
-	int rc = 0;
-
-	dai_data = kzalloc(sizeof(struct msm_dai_q6_dai_data),
-		GFP_KERNEL);
-
-	if (!dai_data) {
-		dev_err(dai->dev, "DAI-%d: fail to allocate dai data\n",
-		dai->id);
-		rc = -ENOMEM;
-		goto rtn;
-	} else
-		dev_set_drvdata(dai->dev, dai_data);
-
-	rc = msm_dai_q6_mi2s_platform_data_validation(dai);
-	if (rc != 0) {
-		pr_err("%s: The msm_dai_q6_mi2s_platform_data_validation failed\n",
-			    __func__);
-		kfree(dai_data);
-	}
-rtn:
-	return rc;
-}
 
 static int msm_dai_q6_dai_probe(struct snd_soc_dai *dai)
 {
@@ -759,17 +586,7 @@ static int msm_dai_q6_dai_remove(struct snd_soc_dai *dai)
 
 	/* If AFE port is still up, close it */
 	if (test_bit(STATUS_PORT_STARTED, dai_data->status_mask)) {
-		switch (dai->id) {
-		case VOICE_PLAYBACK_TX:
-		case VOICE_RECORD_TX:
-		case VOICE_RECORD_RX:
-			pr_debug("%s, stop pseudo port:%d\n",
-						__func__,  dai->id);
-			rc = afe_stop_pseudo_port(dai->id);
-			break;
-		default:
-			rc = afe_close(dai->id); /* can block */
-		}
+		rc = afe_close(dai->id); /* can block */
 		if (IS_ERR_VALUE(rc))
 			dev_err(dai->dev, "fail to close AFE port\n");
 		clear_bit(STATUS_PORT_STARTED, dai_data->status_mask);
@@ -788,8 +605,6 @@ static int msm_dai_q6_set_fmt(struct snd_soc_dai *dai, unsigned int fmt)
 	switch (dai->id) {
 	case PRIMARY_I2S_TX:
 	case PRIMARY_I2S_RX:
-	case MI2S_RX:
-	case SECONDARY_I2S_RX:
 		rc = msm_dai_q6_cdc_set_fmt(dai, fmt);
 		break;
 	default:
@@ -822,7 +637,7 @@ static struct snd_soc_dai_driver msm_dai_q6_i2s_rx_dai = {
 		SNDRV_PCM_RATE_16000,
 		.formats = SNDRV_PCM_FMTBIT_S16_LE,
 		.channels_min = 1,
-		.channels_max = 4,
+		.channels_max = 2,
 		.rate_min =     8000,
 		.rate_max =	48000,
 	},
@@ -876,15 +691,14 @@ static struct snd_soc_dai_driver msm_dai_q6_afe_tx_dai = {
 	.remove = msm_dai_q6_dai_remove,
 };
 
-static struct snd_soc_dai_driver msm_dai_q6_voice_playback_tx_dai = {
+static struct snd_soc_dai_driver msm_dai_q6_hdmi_rx_dai = {
 	.playback = {
-		.rates = SNDRV_PCM_RATE_48000 | SNDRV_PCM_RATE_8000 |
-		SNDRV_PCM_RATE_16000,
+		.rates = SNDRV_PCM_RATE_48000,
 		.formats = SNDRV_PCM_FMTBIT_S16_LE,
-		.channels_min = 1,
+		.channels_min = 2,
 		.channels_max = 2,
 		.rate_max =     48000,
-		.rate_min =     8000,
+		.rate_min =	48000,
 	},
 	.ops = &msm_dai_q6_ops,
 	.probe = msm_dai_q6_dai_probe,
@@ -915,21 +729,6 @@ static struct snd_soc_dai_driver msm_dai_q6_slimbus_tx_dai = {
 		.channels_max = 2,
 		.rate_min =     8000,
 		.rate_max =	48000,
-	},
-	.ops = &msm_dai_q6_ops,
-	.probe = msm_dai_q6_dai_probe,
-	.remove = msm_dai_q6_dai_remove,
-};
-
-static struct snd_soc_dai_driver msm_dai_q6_incall_record_dai = {
-	.capture = {
-		.rates = SNDRV_PCM_RATE_48000 | SNDRV_PCM_RATE_8000 |
-		SNDRV_PCM_RATE_16000,
-		.formats = SNDRV_PCM_FMTBIT_S16_LE,
-		.channels_min = 1,
-		.channels_max = 2,
-		.rate_min =     8000,
-		.rate_max =     48000,
 	},
 	.ops = &msm_dai_q6_ops,
 	.probe = msm_dai_q6_dai_probe,
@@ -1019,20 +818,6 @@ static struct snd_soc_dai_driver msm_dai_q6_aux_pcm_tx_dai = {
 	},
 };
 
-static struct snd_soc_dai_driver msm_dai_q6_mi2s_rx_dai = {
-	.playback = {
-		.rates = SNDRV_PCM_RATE_48000 | SNDRV_PCM_RATE_8000 |
-		SNDRV_PCM_RATE_16000,
-		.formats = SNDRV_PCM_FMTBIT_S16_LE,
-		.channels_min = 1,
-		.rate_min =     8000,
-		.rate_max =	48000,
-	},
-	.ops = &msm_dai_q6_ops,
-	.probe = msm_dai_q6_dai_mi2s_probe,
-	.remove = msm_dai_q6_dai_probe,
-};
-
 /* To do: change to register DAIs as batch */
 static __devinit int msm_dai_q6_dev_probe(struct platform_device *pdev)
 {
@@ -1042,7 +827,6 @@ static __devinit int msm_dai_q6_dev_probe(struct platform_device *pdev)
 
 	switch (pdev->id) {
 	case PRIMARY_I2S_RX:
-	case SECONDARY_I2S_RX:
 		rc = snd_soc_register_dai(&pdev->dev, &msm_dai_q6_i2s_rx_dai);
 		break;
 	case PRIMARY_I2S_TX:
@@ -1056,9 +840,8 @@ static __devinit int msm_dai_q6_dev_probe(struct platform_device *pdev)
 		rc = snd_soc_register_dai(&pdev->dev,
 				&msm_dai_q6_aux_pcm_tx_dai);
 		break;
-	case MI2S_RX:
-		rc = snd_soc_register_dai(&pdev->dev,
-					&msm_dai_q6_mi2s_rx_dai);
+	case HDMI_RX:
+		rc = snd_soc_register_dai(&pdev->dev, &msm_dai_q6_hdmi_rx_dai);
 		break;
 	case SLIMBUS_0_RX:
 		rc = snd_soc_register_dai(&pdev->dev,
@@ -1088,15 +871,6 @@ static __devinit int msm_dai_q6_dev_probe(struct platform_device *pdev)
 	case RT_PROXY_DAI_001_TX:
 	case RT_PROXY_DAI_002_TX:
 		rc = snd_soc_register_dai(&pdev->dev, &msm_dai_q6_afe_tx_dai);
-		break;
-	case VOICE_PLAYBACK_TX:
-		rc = snd_soc_register_dai(&pdev->dev,
-					&msm_dai_q6_voice_playback_tx_dai);
-		break;
-	case VOICE_RECORD_RX:
-	case VOICE_RECORD_TX:
-		rc = snd_soc_register_dai(&pdev->dev,
-						&msm_dai_q6_incall_record_dai);
 		break;
 	default:
 		rc = -ENODEV;
