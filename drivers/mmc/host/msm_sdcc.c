@@ -3484,6 +3484,7 @@ set_polling(struct device *dev, struct device_attribute *attr,
 		if (host->pdev_id == SDCC_WIFI_SLOT) {
 			printk("%s : no need to enable polling for slot %d (as host->pdev_id) \n", __FUNCTION__ , \
 							host->pdev_id );
+
 			mmc->caps &= ~MMC_CAP_NEEDS_POLL;
 	        }
 #endif

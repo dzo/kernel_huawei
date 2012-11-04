@@ -19,7 +19,6 @@
 #include <linux/bootmem.h>
 #include <linux/io.h>
 #ifdef CONFIG_SPI_QSD
-#include <linux/spi/spi.h>
 #endif
 #include <linux/msm_ssbi.h>
 #include <linux/mfd/pmic8058.h>
@@ -135,7 +134,7 @@ struct regulator *vreg_gp4 = NULL;
 #include <linux/bma150.h>
 #include "board-msm7x30-regulator.h"
 
-#define MSM_PMEM_SF_SIZE	0x1800000 // 24M
+#define MSM_PMEM_SF_SIZE	0x01800000 // 24M
 
 #ifdef CONFIG_HUAWEI_KERNEL
 #include <asm-arm/huawei/smem_vendor_huawei.h>
@@ -147,23 +146,23 @@ smem_huawei_vender usb_para_data;
 
 /*set fb size to 5M to save memory 2.8M */
 #ifdef CONFIG_HUAWEI_KERNEL
-#define MSM_FB_SIZE             0x465000
-#define MSM_PMEM_ADSP_SIZE      0x2000000 
+#define MSM_FB_SIZE             0x00480000
+#define MSM_PMEM_ADSP_SIZE      0x02200000 
 #else
 #ifdef CONFIG_FB_MSM_TRIPLE_BUFFER
-#define MSM_FB_SIZE            0x780000
+#define MSM_FB_SIZE            0x00800000
 #else
-#define MSM_FB_SIZE            0x500000
+#define MSM_FB_SIZE            0x00500000
 #endif
-#define MSM_PMEM_ADSP_SIZE      0x3000000
+#define MSM_PMEM_ADSP_SIZE      0x03000000
 #endif
-#define MSM_FLUID_PMEM_ADSP_SIZE	0x2800000
-#define PMEM_KERNEL_EBI0_SIZE   0x600000
-#define MSM_PMEM_AUDIO_SIZE     0x200000
+#define MSM_FLUID_PMEM_ADSP_SIZE	0x02800000
+#define PMEM_KERNEL_EBI0_SIZE   0x00600000
+#define MSM_PMEM_AUDIO_SIZE     0x00200000
 
 #ifdef CONFIG_FB_MSM_DEFAULT_DEPTH_RGB565
 #undef MSM_PMEM_SF_SIZE
-#define MSM_PMEM_SF_SIZE        0x0c00000
+#define MSM_PMEM_SF_SIZE        0x01800000
 #endif
 
 #define PMIC_GPIO_INT		27
@@ -3098,170 +3097,6 @@ static struct marimba_fm_platform_data marimba_fm_pdata = {
 #define BAHAMA_SLAVE_ID_FM_ADDR         0x2A
 #define BAHAMA_SLAVE_ID_QMEMBIST_ADDR   0x7B
 
-static const char *tsadc_id = "MADC";
-
-static struct regulator_bulk_data regs_tsadc_marimba[] = {
-	{ .supply = "gp12", .min_uV = 2200000, .max_uV = 2200000 },
-	{ .supply = "s2",   .min_uV = 1300000, .max_uV = 1300000 },
-};
-
-static struct regulator_bulk_data regs_tsadc_timpani[] = {
-	{ .supply = "s3",   .min_uV = 1800000, .max_uV = 1800000 },
-	{ .supply = "gp12", .min_uV = 2200000, .max_uV = 2200000 },
-	{ .supply = "gp16", .min_uV = 1200000, .max_uV = 1200000 },
-};
-
-static struct regulator_bulk_data *regs_tsadc;
-static int regs_tsadc_count;
-
-static int marimba_tsadc_power(int vreg_on)
-{
-	int rc = 0;
-	int tsadc_adie_type = adie_get_detected_codec_type();
-
-	switch (tsadc_adie_type) {
-	case TIMPANI_ID:
-		rc = pmapp_clock_vote(tsadc_id, PMAPP_CLOCK_ID_D1,
-			vreg_on ? PMAPP_CLOCK_VOTE_ON : PMAPP_CLOCK_VOTE_OFF);
-		if (rc)	{
-			pr_err("%s: unable to %svote for d1 clk\n",
-				__func__, vreg_on ? "" : "de-");
-			goto D1_vote_fail;
-		}
-
-		/* fall through */
-	case MARIMBA_ID:
-		rc = pmapp_clock_vote(tsadc_id, PMAPP_CLOCK_ID_DO,
-			vreg_on ? PMAPP_CLOCK_VOTE_ON : PMAPP_CLOCK_VOTE_OFF);
-		if (rc)	{
-			pr_err("%s: unable to %svote for d1 clk\n",
-				__func__, vreg_on ? "" : "de-");
-			goto D0_vote_fail;
-		}
-
-		WARN_ON(regs_tsadc_count == 0);
-
-		rc = vreg_on ?
-			regulator_bulk_enable(regs_tsadc_count, regs_tsadc) :
-			regulator_bulk_disable(regs_tsadc_count, regs_tsadc);
-
-		if (rc) {
-			pr_err("%s: regulator %sable failed: %d\n",
-					__func__, vreg_on ? "en" : "dis", rc);
-			goto regulator_switch_fail;
-		}
-
-		break;
-	default:
-		pr_err("%s:Adie %d not supported\n",
-				__func__, tsadc_adie_type);
-		return -ENODEV;
-	}
-
-	msleep(5); /* ensure power is stable */
-
-	return 0;
-
-regulator_switch_fail:
-	pmapp_clock_vote(tsadc_id, PMAPP_CLOCK_ID_DO,
-		vreg_on ? PMAPP_CLOCK_VOTE_OFF : PMAPP_CLOCK_VOTE_ON);
-D0_vote_fail:
-	if (tsadc_adie_type == TIMPANI_ID)
-		pmapp_clock_vote(tsadc_id, PMAPP_CLOCK_ID_D1,
-			vreg_on ? PMAPP_CLOCK_VOTE_OFF : PMAPP_CLOCK_VOTE_ON);
-D1_vote_fail:
-	return rc;
-}
-
-static int marimba_tsadc_init(void)
-{
-	int rc = 0;
-	int tsadc_adie_type = adie_get_detected_codec_type();
-
-	switch (tsadc_adie_type) {
-	case MARIMBA_ID:
-		regs_tsadc = regs_tsadc_marimba;
-		regs_tsadc_count = ARRAY_SIZE(regs_tsadc_marimba);
-		break;
-	case TIMPANI_ID:
-		regs_tsadc = regs_tsadc_timpani;
-		regs_tsadc_count = ARRAY_SIZE(regs_tsadc_timpani);
-		break;
-	default:
-		pr_err("%s:Adie %d not supported\n",
-				__func__, tsadc_adie_type);
-		rc = -ENODEV;
-		goto out;
-	}
-
-	rc = regulator_bulk_get(NULL, regs_tsadc_count, regs_tsadc);
-	if (rc) {
-		pr_err("%s: could not get regulators: %d\n",
-				__func__, rc);
-		goto out;
-	}
-
-	rc = regulator_bulk_set_voltage(regs_tsadc_count, regs_tsadc);
-	if (rc) {
-		pr_err("%s: could not set regulator voltages: %d\n",
-				__func__, rc);
-		goto vreg_free;
-	}
-
-	return 0;
-
-vreg_free:
-	regulator_bulk_free(regs_tsadc_count, regs_tsadc);
-out:
-	regs_tsadc = NULL;
-	regs_tsadc_count = 0;
-	return rc;
-}
-
-static int marimba_tsadc_exit(void)
-{
-	regulator_bulk_free(regs_tsadc_count, regs_tsadc);
-	regs_tsadc_count = 0;
-	regs_tsadc = NULL;
-
-	return 0;
-}
-
-
-static struct msm_ts_platform_data msm_ts_data = {
-	.min_x          = 0,
-	.max_x          = 4096,
-	.min_y          = 0,
-	.max_y          = 4096,
-	.min_press      = 0,
-	.max_press      = 255,
-	.inv_x          = 4096,
-	.inv_y          = 4096,
-	.can_wakeup	= false,
-};
-
-static struct marimba_tsadc_platform_data marimba_tsadc_pdata = {
-	.marimba_tsadc_power =  marimba_tsadc_power,
-	.init		     =  marimba_tsadc_init,
-	.exit		     =  marimba_tsadc_exit,
-	.tsadc_prechg_en = true,
-	.can_wakeup	= false,
-	.setup = {
-		.pen_irq_en	=	true,
-		.tsadc_en	=	true,
-	},
-	.params2 = {
-		.input_clk_khz		=	2400,
-		.sample_prd		=	TSADC_CLK_3,
-	},
-	.params3 = {
-		.prechg_time_nsecs	=	6400,
-		.stable_time_nsecs	=	6400,
-		.tsadc_test_mode	=	0,
-	},
-	.tssc_data = &msm_ts_data,
-};
-
 static struct regulator_bulk_data codec_regs[] = {
 	{ .supply = "s4", .min_uV = 2200000, .max_uV = 2200000 },
 };
@@ -3381,8 +3216,6 @@ static struct marimba_platform_data timpani_pdata = {
 	.marimba_setup = msm_timpani_setup_power,
 	.marimba_shutdown = msm_timpani_shutdown_power,
 	.codec = &timpani_codec_pdata,
-	.tsadc = &marimba_tsadc_pdata,
-	.tsadc_ssbi_adap = MARIMBA_SSBI_ADAP,
 };
 
 #define TIMPANI_I2C_SLAVE_ADDR	0xD
@@ -4283,7 +4116,8 @@ static struct ofn_atlab_platform_data optnav_data = {
 	},
 };
 
-static int hdmi_comm_power(int on, int show);
+//PaulM Removed
+/*static int hdmi_comm_power(int on, int show);
 static int hdmi_init_irq(void);
 static int hdmi_enable_5v(int on);
 static int hdmi_core_power(int on, int show);
@@ -4299,7 +4133,7 @@ static struct msm_hdmi_platform_data adv7520_hdmi_data = {
 	.cec_power = hdmi_cec_power,
 	.check_hdcp_hw_support = hdmi_check_hdcp_hw_support,
 };
-
+*/
 #ifdef CONFIG_BOSCH_BMA150
 
 static struct regulator_bulk_data sensors_ldo[] = {
@@ -4442,141 +4276,6 @@ static struct msm_pm_platform_data msm_pm_data[MSM_PM_SLEEP_MODE_NR] = {
 		.residency = 0,
 	},
 };
-
-static struct resource qsd_spi_resources[] = {
-	{
-		.name   = "spi_irq_in",
-		.start	= INT_SPI_INPUT,
-		.end	= INT_SPI_INPUT,
-		.flags	= IORESOURCE_IRQ,
-	},
-	{
-		.name   = "spi_irq_out",
-		.start	= INT_SPI_OUTPUT,
-		.end	= INT_SPI_OUTPUT,
-		.flags	= IORESOURCE_IRQ,
-	},
-	{
-		.name   = "spi_irq_err",
-		.start	= INT_SPI_ERROR,
-		.end	= INT_SPI_ERROR,
-		.flags	= IORESOURCE_IRQ,
-	},
-	{
-		.name   = "spi_base",
-		.start	= 0xA8000000,
-		.end	= 0xA8000000 + SZ_4K - 1,
-		.flags	= IORESOURCE_MEM,
-	},
-	{
-		.name   = "spidm_channels",
-		.flags  = IORESOURCE_DMA,
-	},
-	{
-		.name   = "spidm_crci",
-		.flags  = IORESOURCE_DMA,
-	},
-};
-
-#define AMDH0_BASE_PHYS		0xAC200000
-#define ADMH0_GP_CTL		(ct_adm_base + 0x3D8)
-static int msm_qsd_spi_dma_config(void)
-{
-	void __iomem *ct_adm_base = 0;
-	u32 spi_mux = 0;
-	int ret = 0;
-
-	ct_adm_base = ioremap(AMDH0_BASE_PHYS, PAGE_SIZE);
-	if (!ct_adm_base) {
-		pr_err("%s: Could not remap %x\n", __func__, AMDH0_BASE_PHYS);
-		return -ENOMEM;
-	}
-
-	spi_mux = (ioread32(ADMH0_GP_CTL) & (0x3 << 12)) >> 12;
-
-	qsd_spi_resources[4].start  = DMOV_USB_CHAN;
-	qsd_spi_resources[4].end    = DMOV_TSIF_CHAN;
-
-	switch (spi_mux) {
-	case (1):
-		qsd_spi_resources[5].start  = DMOV_HSUART1_RX_CRCI;
-		qsd_spi_resources[5].end    = DMOV_HSUART1_TX_CRCI;
-		break;
-	case (2):
-		qsd_spi_resources[5].start  = DMOV_HSUART2_RX_CRCI;
-		qsd_spi_resources[5].end    = DMOV_HSUART2_TX_CRCI;
-		break;
-	case (3):
-		qsd_spi_resources[5].start  = DMOV_CE_OUT_CRCI;
-		qsd_spi_resources[5].end    = DMOV_CE_IN_CRCI;
-		break;
-	default:
-		ret = -ENOENT;
-	}
-
-	iounmap(ct_adm_base);
-
-	return ret;
-}
-
-static struct platform_device qsd_device_spi = {
-	.name		= "spi_qsd",
-	.id		= 0,
-	.num_resources	= ARRAY_SIZE(qsd_spi_resources),
-	.resource	= qsd_spi_resources,
-};
-
-#ifdef CONFIG_SPI_QSD
-static struct spi_board_info lcdc_sharp_spi_board_info[] __initdata = {
-	{
-		.modalias	= "lcdc_sharp_ls038y7dx01",
-		.mode		= SPI_MODE_1,
-		.bus_num	= 0,
-		.chip_select	= 0,
-		.max_speed_hz	= 26331429,
-	}
-};
-static struct spi_board_info lcdc_toshiba_spi_board_info[] __initdata = {
-	{
-		.modalias       = "lcdc_toshiba_ltm030dd40",
-		.mode           = SPI_MODE_3|SPI_CS_HIGH,
-		.bus_num        = 0,
-		.chip_select    = 0,
-		.max_speed_hz   = 9963243,
-	}
-};
-#endif
-
-static struct msm_gpio qsd_spi_gpio_config_data[] = {
-	{ GPIO_CFG(45, 1, GPIO_CFG_INPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_2MA), "spi_clk" },
-	{ GPIO_CFG(46, 1, GPIO_CFG_INPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_2MA), "spi_cs0" },
-	{ GPIO_CFG(47, 1, GPIO_CFG_INPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_8MA), "spi_mosi" },
-	{ GPIO_CFG(48, 1, GPIO_CFG_INPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_2MA), "spi_miso" },
-};
-
-static int msm_qsd_spi_gpio_config(void)
-{
-	return msm_gpios_request_enable(qsd_spi_gpio_config_data,
-		ARRAY_SIZE(qsd_spi_gpio_config_data));
-}
-
-static void msm_qsd_spi_gpio_release(void)
-{
-	msm_gpios_disable_free(qsd_spi_gpio_config_data,
-		ARRAY_SIZE(qsd_spi_gpio_config_data));
-}
-
-static struct msm_spi_platform_data qsd_spi_pdata = {
-	.max_clock_speed = 26331429,
-	.gpio_config  = msm_qsd_spi_gpio_config,
-	.gpio_release = msm_qsd_spi_gpio_release,
-	.dma_config = msm_qsd_spi_dma_config,
-};
-
-static void __init msm_qsd_spi_init(void)
-{
-	qsd_device_spi.dev.platform_data = &qsd_spi_pdata;
-}
 
 #ifdef CONFIG_USB_EHCI_MSM_72K
 static void msm_hsusb_vbus_power(unsigned phy_info, int on)
@@ -4834,367 +4533,6 @@ static struct platform_device lcdc_sharp_panel_device = {
 static struct msm_gpio dtv_panel_irq_gpios[] = {
 	{ GPIO_CFG(18, 0, GPIO_CFG_INPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_4MA),
 		"hdmi_int" },
-};
-
-static struct msm_gpio dtv_panel_gpios[] = {
-	{ GPIO_CFG(120, 1, GPIO_CFG_OUTPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_4MA), "wca_mclk" },
-	{ GPIO_CFG(121, 1, GPIO_CFG_OUTPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_4MA), "wca_sd0" },
-	{ GPIO_CFG(122, 1, GPIO_CFG_OUTPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_4MA), "wca_sd1" },
-	{ GPIO_CFG(123, 1, GPIO_CFG_OUTPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_4MA), "wca_sd2" },
-	{ GPIO_CFG(124, 1, GPIO_CFG_OUTPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_8MA), "dtv_pclk" },
-	{ GPIO_CFG(125, 1, GPIO_CFG_OUTPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_4MA), "dtv_en" },
-	{ GPIO_CFG(126, 1, GPIO_CFG_OUTPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_4MA), "dtv_vsync" },
-	{ GPIO_CFG(127, 1, GPIO_CFG_OUTPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_4MA), "dtv_hsync" },
-	{ GPIO_CFG(128, 1, GPIO_CFG_OUTPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_4MA), "dtv_data0" },
-	{ GPIO_CFG(129, 1, GPIO_CFG_OUTPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_4MA), "dtv_data1" },
-	{ GPIO_CFG(130, 1, GPIO_CFG_OUTPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_4MA), "dtv_data2" },
-	{ GPIO_CFG(131, 1, GPIO_CFG_OUTPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_4MA), "dtv_data3" },
-	{ GPIO_CFG(132, 1, GPIO_CFG_OUTPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_4MA), "dtv_data4" },
-	{ GPIO_CFG(160, 1, GPIO_CFG_OUTPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_4MA), "dtv_data5" },
-	{ GPIO_CFG(161, 1, GPIO_CFG_OUTPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_4MA), "dtv_data6" },
-	{ GPIO_CFG(162, 1, GPIO_CFG_OUTPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_4MA), "dtv_data7" },
-	{ GPIO_CFG(163, 1, GPIO_CFG_OUTPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_4MA), "dtv_data8" },
-	{ GPIO_CFG(164, 1, GPIO_CFG_OUTPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_4MA), "dtv_data9" },
-	{ GPIO_CFG(165, 1, GPIO_CFG_OUTPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_4MA), "dtv_dat10" },
-	{ GPIO_CFG(166, 1, GPIO_CFG_OUTPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_4MA), "dtv_dat11" },
-	{ GPIO_CFG(167, 1, GPIO_CFG_OUTPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_4MA), "dtv_dat12" },
-	{ GPIO_CFG(168, 1, GPIO_CFG_OUTPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_4MA), "dtv_dat13" },
-	{ GPIO_CFG(169, 1, GPIO_CFG_OUTPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_4MA), "dtv_dat14" },
-	{ GPIO_CFG(170, 1, GPIO_CFG_OUTPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_4MA), "dtv_dat15" },
-	{ GPIO_CFG(171, 1, GPIO_CFG_OUTPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_4MA), "dtv_dat16" },
-	{ GPIO_CFG(172, 1, GPIO_CFG_OUTPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_4MA), "dtv_dat17" },
-	{ GPIO_CFG(173, 1, GPIO_CFG_OUTPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_4MA), "dtv_dat18" },
-	{ GPIO_CFG(174, 1, GPIO_CFG_OUTPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_4MA), "dtv_dat19" },
-	{ GPIO_CFG(175, 1, GPIO_CFG_OUTPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_4MA), "dtv_dat20" },
-	{ GPIO_CFG(176, 1, GPIO_CFG_OUTPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_4MA), "dtv_dat21" },
-	{ GPIO_CFG(177, 1, GPIO_CFG_OUTPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_4MA), "dtv_dat22" },
-	{ GPIO_CFG(178, 1, GPIO_CFG_OUTPUT,  GPIO_CFG_NO_PULL, GPIO_CFG_4MA), "dtv_dat23" },
-};
-
-
-#ifdef HDMI_RESET
-static unsigned dtv_reset_gpio =
-	GPIO_CFG(37, 0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA);
-#endif
-
-static struct regulator_bulk_data hdmi_core_regs[] = {
-	{ .supply = "ldo8",  .min_uV = 1800000, .max_uV = 1800000 },
-};
-
-static struct regulator_bulk_data hdmi_comm_regs[] = {
-	{ .supply = "ldo8",  .min_uV = 1800000, .max_uV = 1800000 },
-	{ .supply = "ldo10", .min_uV = 2600000, .max_uV = 2600000 },
-};
-
-static struct regulator_bulk_data hdmi_cec_regs[] = {
-	{ .supply = "ldo17", .min_uV = 2600000, .max_uV = 2600000 },
-};
-
-static int __init hdmi_init_regs(void)
-{
-	int rc;
-
-	rc = regulator_bulk_get(NULL, ARRAY_SIZE(hdmi_core_regs),
-			hdmi_core_regs);
-
-	if (rc) {
-		pr_err("%s: could not get %s regulators: %d\n",
-				__func__, "core", rc);
-		goto out;
-	}
-
-	rc = regulator_bulk_set_voltage(ARRAY_SIZE(hdmi_core_regs),
-			hdmi_core_regs);
-
-	if (rc) {
-		pr_err("%s: could not set %s voltages: %d\n",
-				__func__, "core", rc);
-		goto free_core;
-	}
-
-	rc = regulator_bulk_get(NULL, ARRAY_SIZE(hdmi_comm_regs),
-			hdmi_comm_regs);
-
-	if (rc) {
-		pr_err("%s: could not get %s regulators: %d\n",
-				__func__, "comm", rc);
-		goto free_core;
-	}
-
-	rc = regulator_bulk_set_voltage(ARRAY_SIZE(hdmi_comm_regs),
-			hdmi_comm_regs);
-
-	if (rc) {
-		pr_err("%s: could not set %s voltages: %d\n",
-				__func__, "comm", rc);
-		goto free_comm;
-	}
-
-	rc = regulator_bulk_get(NULL, ARRAY_SIZE(hdmi_cec_regs),
-			hdmi_cec_regs);
-
-	if (rc) {
-		pr_err("%s: could not get %s regulators: %d\n",
-				__func__, "cec", rc);
-		goto free_comm;
-	}
-
-	rc = regulator_bulk_set_voltage(ARRAY_SIZE(hdmi_cec_regs),
-			hdmi_cec_regs);
-
-	if (rc) {
-		pr_err("%s: could not set %s voltages: %d\n",
-				__func__, "cec", rc);
-		goto free_cec;
-	}
-
-	return 0;
-
-free_cec:
-	regulator_bulk_free(ARRAY_SIZE(hdmi_cec_regs), hdmi_cec_regs);
-free_comm:
-	regulator_bulk_free(ARRAY_SIZE(hdmi_comm_regs), hdmi_comm_regs);
-free_core:
-	regulator_bulk_free(ARRAY_SIZE(hdmi_core_regs), hdmi_core_regs);
-out:
-	return rc;
-}
-
-static int hdmi_init_irq(void)
-{
-	int rc = msm_gpios_enable(dtv_panel_irq_gpios,
-			ARRAY_SIZE(dtv_panel_irq_gpios));
-	if (rc < 0) {
-		pr_err("%s: gpio enable failed: %d\n", __func__, rc);
-		return rc;
-	}
-	pr_info("%s\n", __func__);
-
-	return 0;
-}
-
-static int hdmi_enable_5v(int on)
-{
-	int pmic_gpio_hdmi_5v_en ;
-
-	if (machine_is_msm8x55_svlte_surf() || machine_is_msm8x55_svlte_ffa() ||
-						machine_is_msm7x30_fluid())
-		pmic_gpio_hdmi_5v_en = PMIC_GPIO_HDMI_5V_EN_V2 ;
-	else
-		pmic_gpio_hdmi_5v_en = PMIC_GPIO_HDMI_5V_EN_V3 ;
-
-	pr_info("%s: %d\n", __func__, on);
-	if (on) {
-		int rc;
-		rc = gpio_request(PM8058_GPIO_PM_TO_SYS(pmic_gpio_hdmi_5v_en),
-			"hdmi_5V_en");
-		if (rc) {
-			pr_err("%s PMIC_GPIO_HDMI_5V_EN gpio_request failed\n",
-				__func__);
-			return rc;
-		}
-		gpio_set_value_cansleep(
-			PM8058_GPIO_PM_TO_SYS(pmic_gpio_hdmi_5v_en), 1);
-	} else {
-		gpio_set_value_cansleep(
-			PM8058_GPIO_PM_TO_SYS(pmic_gpio_hdmi_5v_en), 0);
-		gpio_free(PM8058_GPIO_PM_TO_SYS(pmic_gpio_hdmi_5v_en));
-	}
-	return 0;
-}
-
-static int hdmi_comm_power(int on, int show)
-{
-	if (show)
-		pr_info("%s: i2c comm: %d <LDO8+LDO10>\n", __func__, on);
-	return on ?
-		regulator_bulk_enable(ARRAY_SIZE(hdmi_comm_regs),
-				hdmi_comm_regs) :
-		regulator_bulk_disable(ARRAY_SIZE(hdmi_comm_regs),
-				hdmi_comm_regs);
-}
-
-static int hdmi_core_power(int on, int show)
-{
-	if (show)
-		pr_info("%s: %d <LDO8>\n", __func__, on);
-	return on ?
-		regulator_bulk_enable(ARRAY_SIZE(hdmi_core_regs),
-				hdmi_core_regs) :
-		regulator_bulk_disable(ARRAY_SIZE(hdmi_core_regs),
-				hdmi_core_regs);
-}
-
-static int hdmi_cec_power(int on)
-{
-	pr_info("%s: %d <LDO17>\n", __func__, on);
-	return on ? regulator_bulk_enable(ARRAY_SIZE(hdmi_cec_regs),
-				hdmi_cec_regs) :
-		regulator_bulk_disable(ARRAY_SIZE(hdmi_cec_regs),
-				hdmi_cec_regs);
-}
-
-#if defined(CONFIG_FB_MSM_HDMI_ADV7520_PANEL) || defined(CONFIG_BOSCH_BMA150)
-/* there is an i2c address conflict between adv7520 and bma150 sensor after
- * power up on fluid. As a solution, the default address of adv7520's packet
- * memory is changed as soon as possible
- */
-static int __init fluid_i2c_address_fixup(void)
-{
-	unsigned char wBuff[16];
-	unsigned char rBuff[16];
-	struct i2c_msg msgs[3];
-	int res;
-	int rc = -EINVAL;
-	struct i2c_adapter *adapter;
-
-	if (machine_is_msm7x30_fluid()) {
-		adapter = i2c_get_adapter(0);
-		if (!adapter) {
-			pr_err("%s: invalid i2c adapter\n", __func__);
-			return PTR_ERR(adapter);
-		}
-
-		/* turn on LDO8 */
-		rc = hdmi_core_power(1, 0);
-		if (rc) {
-			pr_err("%s: could not enable hdmi core regs: %d",
-					__func__, rc);
-			goto adapter_put;
-		}
-
-		/* change packet memory address to 0x74 */
-		wBuff[0] = 0x45;
-		wBuff[1] = 0x74;
-
-		msgs[0].addr = ADV7520_I2C_ADDR;
-		msgs[0].flags = 0;
-		msgs[0].buf = (unsigned char *) wBuff;
-		msgs[0].len = 2;
-
-		res = i2c_transfer(adapter, msgs, 1);
-		if (res != 1) {
-			pr_err("%s: error writing adv7520\n", __func__);
-			goto ldo8_disable;
-		}
-
-		/* powerdown adv7520 using bit 6 */
-		/* i2c read first */
-		wBuff[0] = 0x41;
-
-		msgs[0].addr = ADV7520_I2C_ADDR;
-		msgs[0].flags = 0;
-		msgs[0].buf = (unsigned char *) wBuff;
-		msgs[0].len = 1;
-
-		msgs[1].addr = ADV7520_I2C_ADDR;
-		msgs[1].flags = I2C_M_RD;
-		msgs[1].buf = rBuff;
-		msgs[1].len = 1;
-		res = i2c_transfer(adapter, msgs, 2);
-		if (res != 2) {
-			pr_err("%s: error reading adv7520\n", __func__);
-			goto ldo8_disable;
-		}
-
-		/* i2c write back */
-		wBuff[0] = 0x41;
-		wBuff[1] = rBuff[0] | 0x40;
-
-		msgs[0].addr = ADV7520_I2C_ADDR;
-		msgs[0].flags = 0;
-		msgs[0].buf = (unsigned char *) wBuff;
-		msgs[0].len = 2;
-
-		res = i2c_transfer(adapter, msgs, 1);
-		if (res != 1) {
-			pr_err("%s: error writing adv7520\n", __func__);
-			goto ldo8_disable;
-		}
-
-		/* for successful fixup, we release the i2c adapter */
-		/* but leave ldo8 on so that the adv7520 is not repowered */
-		i2c_put_adapter(adapter);
-		pr_info("%s: fluid i2c address conflict resolved\n", __func__);
-	}
-	return 0;
-
-ldo8_disable:
-	hdmi_core_power(0, 0);
-adapter_put:
-	i2c_put_adapter(adapter);
-	return rc;
-}
-fs_initcall_sync(fluid_i2c_address_fixup);
-#endif
-
-static bool hdmi_check_hdcp_hw_support(void)
-{
-	if (machine_is_msm7x30_fluid())
-		return false;
-	else
-		return true;
-}
-
-static int dtv_panel_power(int on)
-{
-	int flag_on = !!on;
-	static int dtv_power_save_on;
-	int rc;
-
-	if (dtv_power_save_on == flag_on)
-		return 0;
-
-	dtv_power_save_on = flag_on;
-	pr_info("%s: %d\n", __func__, on);
-
-#ifdef HDMI_RESET
-	if (on) {
-		/* reset Toshiba WeGA chip -- toggle reset pin -- gpio_180 */
-		rc = gpio_tlmm_config(dtv_reset_gpio, GPIO_CFG_ENABLE);
-		if (rc) {
-			pr_err("%s: gpio_tlmm_config(%#x)=%d\n",
-				       __func__, dtv_reset_gpio, rc);
-			return rc;
-		}
-
-		/* bring reset line low to hold reset*/
-		gpio_set_value(37, 0);
-	}
-#endif
-
-	if (on) {
-		rc = msm_gpios_enable(dtv_panel_gpios,
-				ARRAY_SIZE(dtv_panel_gpios));
-		if (rc < 0) {
-			printk(KERN_ERR "%s: gpio enable failed: %d\n",
-				__func__, rc);
-			return rc;
-		}
-	} else {
-		rc = msm_gpios_disable(dtv_panel_gpios,
-				ARRAY_SIZE(dtv_panel_gpios));
-		if (rc < 0) {
-			printk(KERN_ERR "%s: gpio disable failed: %d\n",
-				__func__, rc);
-			return rc;
-		}
-	}
-
-	mdelay(5);		/* ensure power is stable */
-
-#ifdef HDMI_RESET
-	if (on) {
-		gpio_set_value(37, 1);	/* bring reset line high */
-		mdelay(10);		/* 10 msec before IO can be accessed */
-	}
-#endif
-
-	return rc;
-}
-
-static struct lcdc_platform_data dtv_pdata = {
-	.lcdc_power_save   = dtv_panel_power,
 };
 
 /*disable QC's In Band Sleep mode with BCM4329 bluetooth chip*/
@@ -5853,7 +5191,6 @@ static void __init msm_fb_add_devices(void)
 	msm_fb_register_device("mdp", &mdp_pdata);
 	msm_fb_register_device("pmdh", &mddi_pdata);
 	/* removed several lines */
-//	msm_fb_register_device("dtv", &dtv_pdata);
 //	msm_fb_register_device("tvenc", &atv_pdata);
 #ifdef CONFIG_FB_MSM_TVOUT
 	msm_fb_register_device("tvout_device", NULL);
@@ -6878,8 +6215,7 @@ static struct platform_device *devices[] __initdata = {
 #ifdef CONFIG_USB_G_ANDROID
 	&android_usb_device,
 #endif
-	&qsd_device_spi,
-
+	
 #ifdef CONFIG_MSM_SSBI
 	&msm_device_ssbi_pmic1,
 #endif
@@ -9044,8 +8380,7 @@ static void __init msm7x30_init(void)
 	/* removed several lines */
 //	(void)lcdc_sharp_panel_device;
 //	(void)msm_camera_sensor_mt9e013;
-	msm_qsd_spi_init();
-
+	
 /*
 #ifdef CONFIG_SPI_QSD
 	if (machine_is_msm7x30_fluid())
@@ -9083,8 +8418,7 @@ static void __init msm7x30_init(void)
 			ARRAY_SIZE(msm_i2c_board_info));
 
 	if (!machine_is_msm8x55_svlte_ffa() && !machine_is_msm7x30_fluid())
-		marimba_pdata.tsadc = &marimba_tsadc_pdata;
-
+		
 	if (machine_is_msm7x30_fluid())
 		i2c_register_board_info(0, cy8info,
 					ARRAY_SIZE(cy8info));

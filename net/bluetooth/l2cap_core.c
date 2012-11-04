@@ -3354,6 +3354,7 @@ done:
 		break;
 
 	case L2CAP_MODE_STREAMING:
+		l2cap_setup_txwin(pi);
 		rfc.txwin_size      = 0;
 		rfc.max_transmit    = 0;
 		rfc.retrans_timeout = 0;
@@ -5525,8 +5526,11 @@ static void l2cap_logical_link_worker(struct work_struct *work)
 		container_of(work, struct l2cap_logical_link_work, work);
 	struct sock *sk = log_link_work->chan->l2cap_sk;
 
-	l2cap_logical_link_complete(log_link_work->chan, log_link_work->status);
+	if (sk) {	
+	l2cap_logical_link_complete(log_link_work->chan,
+	log_link_work->status);
 	sock_put(sk);
+}
 	hci_chan_put(log_link_work->chan);
 	kfree(log_link_work);
 }

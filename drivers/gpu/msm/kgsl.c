@@ -1656,10 +1656,20 @@ static long kgsl_ioctl_map_user_mem(struct kgsl_device_private *dev_priv,
 	kgsl_check_idle(dev_priv->device);
 	return result;
 
- error_put_file_ptr:
-	if (entry->priv_data)
-		fput(entry->priv_data);
-
+	error_put_file_ptr:	
+	switch (entry->memtype) {
+	case KGSL_MEM_ENTRY_PMEM:
+	case KGSL_MEM_ENTRY_ASHMEM:
+		if (entry->priv_data)
+			fput(entry->priv_data);	
+		break;
+	case KGSL_MEM_ENTRY_ION:
+		ion_unmap_dma(kgsl_ion_client, entry->priv_data);
+		ion_free(kgsl_ion_client, entry->priv_data);
+		break;
+	default:
+		break;
+	}
 error:
 	kfree(entry);
 	kgsl_check_idle(dev_priv->device);
@@ -2375,10 +2385,20 @@ static void kgsl_core_exit(void)
 {
 	unregister_chrdev_region(kgsl_driver.major, KGSL_DEVICE_MAX);
 
-	kgsl_mmu_ptpool_destroy(&kgsl_driver.ptpool);
+	kgsl_mmu_ptpool_destroy(kgsl_driver.ptpool);
 	kgsl_driver.ptpool = NULL;
 
+	/*	
+   	* We call kgsl_sharedmem_uninit_sysfs() and device_unregister()
+	* only if kgsl_driver.virtdev has been populated.
+	* We check at least one member of kgsl_driver.virtdev to
+	* see if it is not NULL (and thus, has been populated).
+	*/
+
+	if (kgsl_driver.virtdev.class) {
+	kgsl_sharedmem_uninit_sysfs();	
 	device_unregister(&kgsl_driver.virtdev);
+	}
 
 	if (kgsl_driver.class) {
 		class_destroy(kgsl_driver.class);
