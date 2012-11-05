@@ -1021,8 +1021,12 @@ got:
 	if (IS_DIRSYNC(inode))
 		ext4_handle_sync(handle);
 	if (insert_inode_locked(inode) < 0) {
-		err = -EINVAL;
-		goto fail_drop;
+		/*
+		 * Likely a bitmap corruption causing inode to be allocated
+		 * twice.
+		 */
+		err = -EIO;
+		goto fail;
 	}
 	spin_lock(&sbi->s_next_gen_lock);
 	inode->i_generation = sbi->s_next_generation++;
@@ -1189,7 +1193,8 @@ unsigned long ext4_count_free_inodes(struct super_block *sb)
 		if (!bitmap_bh)
 			continue;
 
-		x = ext4_count_free(bitmap_bh, EXT4_INODES_PER_GROUP(sb) / 8);
+		x = ext4_count_free(bitmap_bh->b_data,
+				    EXT4_INODES_PER_GROUP(sb) / 8);
 		printk(KERN_DEBUG "group %lu: stored = %d, counted = %lu\n",
 			(unsigned long) i, ext4_free_inodes_count(sb, gdp), x);
 		bitmap_count += x;
@@ -1275,10 +1280,10 @@ extern int ext4_init_inode_table(struct super_block *sb, ext4_group_t group,
 	 * used inodes so we need to skip blocks with used inodes in
 	 * inode table.
 	 */
-/*  yanzhijun for remount system */
 	if (!(gdp->bg_flags & cpu_to_le16(EXT4_BG_INODE_UNINIT)))
-		used_blks = (EXT4_INODES_PER_GROUP(sb) -
-			    ext4_itable_unused_count(sb, gdp))/sbi->s_inodes_per_block;
+		used_blks = DIV_ROUND_UP((EXT4_INODES_PER_GROUP(sb) -
+			    ext4_itable_unused_count(sb, gdp)),
+			    sbi->s_inodes_per_block);
 
 	if ((used_blks < 0) || (used_blks > sbi->s_itb_per_group)) {
 		ext4_error(sb, "Something is wrong with group %u\n"

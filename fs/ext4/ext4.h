@@ -175,6 +175,7 @@ struct mpage_da_data {
  */
 #define	EXT4_IO_END_UNWRITTEN	0x0001
 #define EXT4_IO_END_ERROR	0x0002
+#define EXT4_IO_END_QUEUED	0x0004
 
 struct ext4_io_page {
 	struct page	*p_page;
@@ -357,8 +358,7 @@ struct flex_groups {
 
 /* Flags that should be inherited by new inodes from their parent. */
 #define EXT4_FL_INHERITED (EXT4_SECRM_FL | EXT4_UNRM_FL | EXT4_COMPR_FL |\
-			   EXT4_SYNC_FL | EXT4_IMMUTABLE_FL | EXT4_APPEND_FL |\
-			   EXT4_NODUMP_FL | EXT4_NOATIME_FL |\
+			   EXT4_SYNC_FL | EXT4_NODUMP_FL | EXT4_NOATIME_FL |\
 			   EXT4_NOCOMPR_FL | EXT4_JOURNAL_DATA_FL |\
 			   EXT4_NOTAIL_FL | EXT4_DIRSYNC_FL)
 
@@ -1215,6 +1215,12 @@ struct ext4_sb_info {
 
 	/* Kernel thread for multiple mount protection */
 	struct task_struct *s_mmp_tsk;
+
+#ifdef CONFIG_EXT4_E2FSCK_RECOVER
+	/* workqueue for rebooting oem-22 to run e2fsck */
+	struct work_struct reboot_work;
+	struct workqueue_struct *recover_wq;
+#endif
 };
 
 static inline struct ext4_sb_info *EXT4_SB(struct super_block *sb)
@@ -1713,7 +1719,7 @@ struct mmpd_data {
 # define NORET_AND	noreturn,
 
 /* bitmap.c */
-extern unsigned int ext4_count_free(struct buffer_head *, unsigned);
+extern unsigned int ext4_count_free(char *bitmap, unsigned numchars);
 
 /* balloc.c */
 extern unsigned int ext4_block_group(struct super_block *sb,
@@ -2177,6 +2183,10 @@ extern int ext4_fiemap(struct inode *inode, struct fiemap_extent_info *fieinfo,
 extern int ext4_move_extents(struct file *o_filp, struct file *d_filp,
 			     __u64 start_orig, __u64 start_donor,
 			     __u64 len, __u64 *moved_len);
+
+#ifdef CONFIG_EXT4_E2FSCK_RECOVER
+extern void ext4_e2fsck(struct super_block *sb);
+#endif
 
 /* page-io.c */
 extern int __init ext4_init_pageio(void);
