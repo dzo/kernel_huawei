@@ -322,7 +322,7 @@ static void cfg80211_event_work(struct work_struct *work)
 }
 
 /* exported functions */
-
+extern  struct cfg80211_registered_device * pWifiPrealloc;
 struct wiphy *wiphy_new(const struct cfg80211_ops *ops, int sizeof_priv)
 {
 	static int wiphy_counter;
@@ -341,7 +341,9 @@ struct wiphy *wiphy_new(const struct cfg80211_ops *ops, int sizeof_priv)
 
 	alloc_size = sizeof(*rdev) + sizeof_priv;
 
-	rdev = kzalloc(alloc_size, GFP_KERNEL);
+	printk("wiphy_new alloc:%d\n",alloc_size);
+	rdev=pWifiPrealloc;
+	memset(rdev,0,alloc_size);
 	if (!rdev)
 		return NULL;
 
@@ -355,7 +357,7 @@ struct wiphy *wiphy_new(const struct cfg80211_ops *ops, int sizeof_priv)
 		wiphy_counter--;
 		mutex_unlock(&cfg80211_mutex);
 		/* ugh, wrapped! */
-		kfree(rdev);
+//		kfree(rdev);
 		return NULL;
 	}
 
@@ -392,7 +394,7 @@ struct wiphy *wiphy_new(const struct cfg80211_ops *ops, int sizeof_priv)
 				   &rdev->rfkill_ops, rdev);
 
 	if (!rdev->rfkill) {
-		kfree(rdev);
+//		kfree(rdev);
 		return NULL;
 	}
 
@@ -706,7 +708,7 @@ void cfg80211_dev_free(struct cfg80211_registered_device *rdev)
 	list_for_each_entry_safe(scan, tmp, &rdev->bss_list, list)
 		cfg80211_put_bss(&scan->pub);
 	cfg80211_rdev_free_wowlan(rdev);
-	kfree(rdev);
+//	kfree(rdev);
 }
 
 void wiphy_free(struct wiphy *wiphy)

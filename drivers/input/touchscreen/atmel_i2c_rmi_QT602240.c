@@ -2407,6 +2407,7 @@ static void atmel_ts_work_func(struct work_struct *work)
                 			if(0 == key_pressed1)
                 			{
                                 input_report_key(ts->key_input, key_tmp, 1);
+				msm_timed_vibrate(vibrate);
                                 key_pressed1 = 1;
                                 ATMEL_DBG_MASK("the key is pressed report!\n");
                 			}

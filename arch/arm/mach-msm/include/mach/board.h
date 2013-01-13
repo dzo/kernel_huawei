@@ -551,5 +551,4 @@ void msm_snddev_hac_off(void);
 
 extern unsigned int msm_shared_ram_phys; /* defined in arch/arm/mach-msm/io.c */
 
-
 #endif

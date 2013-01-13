@@ -84,12 +84,6 @@
 
 #define DDL_MAX_NUM_IN_INPUTFRAME_POOL          (DDL_MAX_NUM_OF_B_FRAME + 1)
 
-enum ddl_mem_area {
-	DDL_FW_MEM	= 0x0,
-	DDL_MM_MEM	= 0x1,
-	DDL_CMD_MEM	= 0x2
-};
-
 struct ddl_buf_addr{
 	u8  *virtual_base_addr;
 	u8  *physical_base_addr;
@@ -99,7 +93,6 @@ struct ddl_buf_addr{
 	struct msm_mapped_buffer *mapped_buffer;
 	struct ion_handle *alloc_handle;
 	u32 buffer_size;
-	enum ddl_mem_area mem_type;
 };
 enum ddl_cmd_state{
 	DDL_CMD_INVALID         = 0x0,
@@ -260,7 +253,6 @@ struct ddl_encoder_data{
 	u32  mb_info_enable;
 	u32  ext_enc_control_val;
 	u32  num_references_for_p_frame;
-	u32	 closed_gop;
 };
 struct ddl_decoder_data {
 	struct ddl_codec_data_hdr  hdr;
@@ -301,7 +293,6 @@ struct ddl_decoder_data {
 	u32  prev_ip_frm_tag;
 	u32  cont_mode;
 	u32  reconfig_detected;
-	u32  dmx_disable;
 };
 union ddl_codec_data{
 	struct ddl_codec_data_hdr  hdr;
@@ -443,7 +434,6 @@ u32 ddl_insert_input_frame_to_pool(struct ddl_client_context *ddl,
 void ddl_decoder_chroma_dpb_change(struct ddl_client_context *ddl);
 u32  ddl_check_reconfig(struct ddl_client_context *ddl);
 void ddl_handle_reconfig(u32 res_change, struct ddl_client_context *ddl);
-void ddl_fill_dec_desc_buffer(struct ddl_client_context *ddl);
 
 #ifdef DDL_BUF_LOG
 void ddl_list_buffers(struct ddl_client_context *ddl);

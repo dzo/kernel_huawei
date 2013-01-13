@@ -8529,7 +8529,7 @@ static struct mmc_platform_data msm7x30_sdc3_data = {
 #endif
 	.msmsdcc_fmin	= 144000,
 	.msmsdcc_fmid	= 24576000,
-	.msmsdcc_fmax	= 49152000,
+	.msmsdcc_fmax	= 40960000,
 	.nonremovable	= 0,
 };
 #endif
@@ -9238,6 +9238,12 @@ out:
 	return rc;
 }
 
+void *pAniSirGlobal;
+EXPORT_SYMBOL(pAniSirGlobal);
+
+void *pWifiPrealloc;
+EXPORT_SYMBOL(pWifiPrealloc);
+
 static void __init msm7x30_init_mmc(void)
 {
 #ifdef CONFIG_MMC_MSM_SDC1_SUPPORT
@@ -9295,6 +9301,8 @@ out2:
 /* DTS2012020402114 zhuwenying 20120206 end > */
 	msm_add_sdcc(3, &msm7x30_sdc3_data);
 /* < DTS2010111804286  hanshirong 20101118 begin */
+        pAniSirGlobal=kmalloc(40000,GFP_KERNEL); // pre-allocate 40K for wifi data
+        pWifiPrealloc=kmalloc(8192,GFP_KERNEL); 
 #ifdef CONFIG_HUAWEI_WIFI_SDCC
 /* < DTS2011090203253 xuke 20110902 begin */
 	bcm_detect_chip_type();

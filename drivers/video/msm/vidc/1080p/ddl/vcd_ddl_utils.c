@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2012, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -23,6 +23,8 @@ struct time_data {
 };
 static struct time_data proc_time[MAX_TIME_DATA];
 #define DDL_MSG_TIME(x...) printk(KERN_DEBUG x)
+
+#define DDL_FW_CHANGE_ENDIAN
 
 static unsigned int vidc_mmu_subsystem[] =	{
 		MSM_SUBSYSTEM_VIDEO, MSM_SUBSYSTEM_VIDEO_FWARE};
@@ -50,7 +52,6 @@ void *ddl_pmem_alloc(struct ddl_buf_addr *addr, size_t sz, u32 alignment)
 		goto bail_out;
 	}
 	ddl_context = ddl_get_context();
-	res_trk_set_mem_type(addr->mem_type);
 	alloc_size = (sz + alignment);
 	if (res_trk_get_enable_ion()) {
 		if (!ddl_context->video_ion_client)
@@ -63,8 +64,8 @@ void *ddl_pmem_alloc(struct ddl_buf_addr *addr, size_t sz, u32 alignment)
 		}
 		addr->alloc_handle = ion_alloc(
 		ddl_context->video_ion_client, alloc_size, SZ_4K,
-			res_trk_get_mem_type());
-		if (IS_ERR_OR_NULL(addr->alloc_handle)) {
+			(1<<res_trk_get_mem_type()));
+		if (!addr->alloc_handle) {
 			DDL_MSG_ERROR("%s() :DDL ION alloc failed\n",
 						 __func__);
 			goto bail_out;
@@ -125,13 +126,12 @@ free_acm_ion_alloc:
 		if (addr->alloc_handle) {
 			ion_free(ddl_context->video_ion_client,
 				addr->alloc_handle);
-			addr->alloc_handle = NULL;
 		}
-	} else {
+	} else
 		free_contiguous_memory_by_paddr(
 			(unsigned long)addr->alloced_phys_addr);
-		addr->alloced_phys_addr = (phys_addr_t)NULL;
-	}
+	addr->alloc_handle = NULL;
+	addr->alloced_phys_addr = (phys_addr_t)NULL;
 bail_out:
 	return NULL;
 }
@@ -145,7 +145,7 @@ void ddl_pmem_free(struct ddl_buf_addr *addr)
 		return;
 	}
 	if (ddl_context->video_ion_client) {
-		if (!IS_ERR_OR_NULL(addr->alloc_handle)) {
+		if (addr->alloc_handle) {
 			ion_free(ddl_context->video_ion_client,
 				addr->alloc_handle);
 		}
@@ -287,6 +287,23 @@ void ddl_list_buffers(struct ddl_client_context *ddl)
 }
 #endif
 
+#ifdef DDL_FW_CHANGE_ENDIAN
+static void ddl_fw_change_endian(u8 *fw, u32 fw_size)
+{
+	u32 i = 0;
+	u8  temp;
+	for (i = 0; i < fw_size; i = i + 4) {
+		temp = fw[i];
+		fw[i] = fw[i+3];
+		fw[i+3] = temp;
+		temp = fw[i+1];
+		fw[i+1] = fw[i+2];
+		fw[i+2] = temp;
+	}
+	return;
+}
+#endif
+
 u32 ddl_fw_init(struct ddl_buf_addr *dram_base)
 {
 
@@ -300,6 +317,9 @@ u32 ddl_fw_init(struct ddl_buf_addr *dram_base)
 		vidc_video_codec_fw_size);
 	memcpy(dest_addr, vidc_video_codec_fw,
 		vidc_video_codec_fw_size);
+#ifdef DDL_FW_CHANGE_ENDIAN
+	ddl_fw_change_endian(dest_addr, vidc_video_codec_fw_size);
+#endif
 	return true;
 }
 

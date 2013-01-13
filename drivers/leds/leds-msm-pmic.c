@@ -130,7 +130,7 @@ static void msm_keypad_bl_led_set(struct led_classdev *led_cdev,
 	    }
 	    else
 	    {
-		    ret = pmic_set_keyled_intensity(LED_KEYPAD, value/63);
+		    ret = pmic_set_keyled_intensity(LED_KEYPAD, value/32);
 	    }
 	      /*< DTS2011072204018  sunhonghui 20110722 begin */
 	      //ret = pmic_set_led_intensity(LED_KEYPAD, !( ! value));
