@@ -114,11 +114,12 @@ and the height of the key region is 8.5mm, TS_Y_MAX * 8.5 /91.5 */
 #define EXTRA_MAX_TOUCH_KEY    4
 #define TS_KEY_DEBOUNCE_TIMER_MS 60
 
-static int vibrate=30;
+static int vibrate=20;
 
 module_param(vibrate, int, 00644);
 
 void msm_timed_vibrate(int);
+
 
 /* to define a region of touch panel */
 typedef struct
@@ -834,7 +835,7 @@ int write_power_config(int on)
 /* < DTS2010083103149 zhangtao 20100909 begin */
 		/* < DTS2011042106137 zhangtao 20110509 begin */
         /* < DTS2011062404739 cuiyu 20110624 begin */
-	    *(tmp + 1) = 14; //0xff//Active Acquisition
+	    *(tmp + 1) = 16; //0xff//Active Acquisition
         /* DTS2011062404739 cuiyu 20110624 end > */
 		/* DTS2011042106137 zhangtao 20110509 end > */
 /* DTS2010083103149 zhangtao 20100909 end > */
@@ -1196,7 +1197,7 @@ int write_gripfacesuppression_config(u8 instance)
 /* < DTS2010083103149 zhangtao 20100909 begin */
 	/* < DTS2011042106137 zhangtao 20110509 begin */
 	/* turn off the fripfacesuppression */
-	*(tmp + 0) = 0x00; //0x05; //ctrl
+	*(tmp + 0) = 0x07; //0x05; //ctrl
 	/* DTS2011042106137 zhangtao 20110509 end > */
 /* < DTS2010073101113 zhangtao 20100819 begin */
 	*(tmp + 1) = 0; //xlogrip
@@ -1206,7 +1207,7 @@ int write_gripfacesuppression_config(u8 instance)
 	*(tmp + 5) = 0; //maxtchs
 	*(tmp + 6) = 0; //reserved
 	*(tmp + 7) = 80; //szthr1
-	*(tmp + 8) = 40; //szthr2
+	*(tmp + 8) = 20; //szthr2
 	*(tmp + 9) = 4; //shpthr1
 	*(tmp + 10) = 35; //shpthr2
 	*(tmp + 11) = 10; //supextto
@@ -2399,6 +2400,7 @@ static void atmel_ts_work_func(struct work_struct *work)
 
                                 input_report_key(ts->key_input, key_tmp, 0);
                 				key_pressed1 = 0;
+                				msm_timed_vibrate(vibrate);
                                 ATMEL_DBG_MASK("when the key is released report!\n");
                 			}
                 		}
@@ -2407,7 +2409,6 @@ static void atmel_ts_work_func(struct work_struct *work)
                 			if(0 == key_pressed1)
                 			{
                                 input_report_key(ts->key_input, key_tmp, 1);
-				msm_timed_vibrate(vibrate);
                                 key_pressed1 = 1;
                                 ATMEL_DBG_MASK("the key is pressed report!\n");
                 			}
@@ -2457,7 +2458,7 @@ static void atmel_ts_work_func(struct work_struct *work)
 						if (ts->test > 0) 
 							key_pressed = KEY_BRL_DOT1;
 						else
-							key_pressed = KEY_SEARCH;
+							key_pressed = KEY_SEARCH;							
 					 	touch_input_report_key(ts, key_pressed, 1);
 						input_sync(ts->input_dev);
 						msm_timed_vibrate(vibrate);
@@ -2502,8 +2503,8 @@ static void atmel_ts_work_func(struct work_struct *work)
 				default:
 					break;
 			}
-
-
+				
+				
 			break;
 /* < DTS2010083103149 zhangtao 20100909 begin */
         case PROCG_GRIPFACESUPPRESSION_T20:         
@@ -2515,7 +2516,7 @@ static void atmel_ts_work_func(struct work_struct *work)
 
             break;
 /* DTS2010083103149 zhangtao 20100909 end > */
-
+            
 		default:
 			TS_DEBUG_TS("T%d detect\n", obj);
 			break;
