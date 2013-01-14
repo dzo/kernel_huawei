@@ -75,8 +75,8 @@ UTS_TRUNCATE="cut -b -$UTS_LEN"
 
   #/* < DTS2011052606009 jiaxianghong 20110527 begin */
   #/* < DTS2011030103387 niguodong 20110415 begin */
-  echo \#define LINUX_COMPILE_BY \"dzo\"
-  echo \#define LINUX_COMPILE_HOST \"martin\"
+  echo \#define LINUX_COMPILE_BY \"forumber\"
+  echo \#define LINUX_COMPILE_HOST \"dzo\"
   #/* DTS2011030103387 niguodong 20110415 end > */
   #/* < DTS2011052606009 jiaxianghong 20110527 end */
 
