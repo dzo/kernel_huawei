@@ -126,8 +126,8 @@ static struct clkctl_acpu_speed acpu_freq_tbl[] = {
 	{ 0, MAX_AXI_KHZ, AXI, 1, 0, 61440000, 900, VDD_RAW(900) },
 	{ 0, 245760, PLL_3,    5, 2,  61440000,  900, VDD_RAW(900) },
 	{ 1, 368640, PLL_3,    5, 1,  122800000, 900, VDD_RAW(900) },
-	{ 0, 480000,  PLL_2,    3, 0,    122800000, 900,  VDD_RAW(900),  &pll2_tbl[0]},
-	{ 0, 600000,  PLL_2,    3, 0,    122800000, 925,  VDD_RAW(925),  &pll2_tbl[1]},
+	{ 1, 480000,  PLL_2,    3, 0,    122800000, 900,  VDD_RAW(900),  &pll2_tbl[0]},
+	{ 1, 600000,  PLL_2,    3, 0,    122800000, 925,  VDD_RAW(925),  &pll2_tbl[1]},
 	/* AXI has MSMC1 implications. See above. */
 	{ 1, 768000, PLL_1,    2, 0,  153600000, 1050, VDD_RAW(1050) },
 	/*
