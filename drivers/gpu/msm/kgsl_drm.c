@@ -295,9 +295,8 @@ kgsl_gem_alloc_memory(struct drm_gem_object *obj)
 		priv->memdesc.size = obj->size * priv->bufcount;
 
 	} else if (TYPE_IS_MEM(priv->type)) {
-		result = kgsl_sharedmem_page_alloc(&priv->memdesc,
-					priv->pagetable,
-					obj->size * priv->bufcount, 0);
+		priv->memdesc.hostptr =
+			vmalloc_user(obj->size * priv->bufcount);
 
 		if (priv->memdesc.hostptr == NULL) {
 			DRM_ERROR("Unable to allocate vmalloc memory\n");
@@ -1043,18 +1042,17 @@ int kgsl_gem_kmem_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
 	struct drm_gem_object *obj = vma->vm_private_data;
 	struct drm_device *dev = obj->dev;
 	struct drm_kgsl_gem_object *priv;
-	unsigned long offset;
+	unsigned long offset, pg;
 	struct page *page;
-	int i;
 
 	mutex_lock(&dev->struct_mutex);
 
 	priv = obj->driver_private;
 
 	offset = (unsigned long) vmf->virtual_address - vma->vm_start;
-	i = offset >> PAGE_SHIFT;
-	page = sg_page(&(priv->memdesc.sg[i]));
+	pg = (unsigned long) priv->memdesc.hostptr + offset;
 
+	page = vmalloc_to_page((void *) pg);
 	if (!page) {
 		mutex_unlock(&dev->struct_mutex);
 		return VM_FAULT_SIGBUS;

@@ -47,7 +47,9 @@ struct kgsl_pwrctrl {
 	int thermal_pwrlevel;
 	unsigned int num_pwrlevels;
 	unsigned int interval_timeout;
+	/*< DTS2012041906630 zhangxiangdang 20120423 begin */
 	bool strtstp_sleepwake;
+	/* DTS2012041906630 zhangxiangdang 20120423 end > */
 	struct regulator *gpu_reg;
 	uint32_t pcl;
 	unsigned int nap_allowed;
