@@ -89,10 +89,8 @@ static ssize_t pwrscale_policy_show(struct kgsl_device *device, char *buf)
 
 	return ret;
 }
-/*< DTS2011123005723 hanfeng 20111230 begin*/
-/*modify the file permission */
+
 PWRSCALE_ATTR(policy, 0664, pwrscale_policy_show, pwrscale_policy_store);
-/*DTS2011123005723 hanfeng 20111230 end >*/
 
 static ssize_t pwrscale_avail_policies_show(struct kgsl_device *device,
 					    char *buf)
