@@ -114,11 +114,12 @@ and the height of the key region is 8.5mm, TS_Y_MAX * 8.5 /91.5 */
 #define EXTRA_MAX_TOUCH_KEY    4
 #define TS_KEY_DEBOUNCE_TIMER_MS 60
 
-static int vibrate=30;
+static int vibrate=20;
 
 module_param(vibrate, int, 00644);
 
 void msm_timed_vibrate(int);
+
 
 /* to define a region of touch panel */
 typedef struct
@@ -322,8 +323,7 @@ static u8 atmel_timer = 0;
 #define DISABLE 0
 
 /* < DTS2011062404739 cuiyu 20110624 begin */
-static uint32_t resume_time = 0;
-static u8 cal_check_flag = 1; 
+static u8 cal_check_flag = 0; 
 /* DTS2011062404739 cuiyu 20110624 end > */
 /* DTS2010083103149 zhangtao 20100909 end > */
 
@@ -1061,7 +1061,7 @@ int write_multitouchscreen_config(u8 instance,int flag)
 	*(tmp + 11) = 3; //movhysti
 	/* < DTS2011042106137 zhangtao 20110509 begin */
 	/*  make the point report every pix */
-	*(tmp + 12) = 1; //movhystn
+	*(tmp + 12) = 3; //movhystn
 	/* DTS2011042106137 zhangtao 20110509 end > */
 	*(tmp + 13) = 0;//0x2e; //movfilter
 	*(tmp + 14) = 2; //numtouch
@@ -1196,7 +1196,7 @@ int write_gripfacesuppression_config(u8 instance)
 /* < DTS2010083103149 zhangtao 20100909 begin */
 	/* < DTS2011042106137 zhangtao 20110509 begin */
 	/* turn off the fripfacesuppression */
-	*(tmp + 0) = 0x00; //0x05; //ctrl
+	*(tmp + 0) = 0x07; //0x05; //ctrl
 	/* DTS2011042106137 zhangtao 20110509 end > */
 /* < DTS2010073101113 zhangtao 20100819 begin */
 	*(tmp + 1) = 0; //xlogrip
@@ -1272,7 +1272,7 @@ int write_noisesuppression_config(u8 instance)
 	*(tmp + 6) = 0xff; //GCAFLL
 	*(tmp + 7) = 4; //actvgcafvalid
     /* < DTS2011062404739 cuiyu 20110624 begin */
-	*(tmp + 8) = 30; //noisethr
+	*(tmp + 8) = 20; //noisethr
     /* DTS2011062404739 cuiyu 20110624 end > */
 	*(tmp + 9) = 0; //reserved
 	*(tmp + 10) = 0; //freqhopscale
@@ -1889,7 +1889,15 @@ void check_chip_calibration(void)
 		/* Process counters and decide if cal was good or if we must re-calibrate. */
         /* < DTS2011062404739 cuiyu 20110624 begin */
         /* check error */
-		if(atch_ch > 0)
+		if((tch_ch) && (atch_ch == 0))
+		{
+			/* Calibration may be good */
+			cal_maybe_good();
+			TS_DEBUG_TS("the func cal_maybe_good is used!\n");
+		}
+		/* CAL_THR is configurable. A starting value of 10 to 20 is suggested.
+		 *       * This can then be tuned for the particular design. */
+		else if((tch_ch - 25) <= atch_ch && (tch_ch || atch_ch))
         /* DTS2011062404739 cuiyu 20110624 end > */
 		{					
 			/* Calibration was bad - must recalibrate and check afterwards. */
@@ -1914,46 +1922,48 @@ void check_chip_calibration(void)
 }
 /* < DTS2011062404739 cuiyu 20110624 begin */
 /* check point */
-static int check_too_many_point(int num_i, int *x_record)
-{
-
-		while(num_i > 0)
-		{
-			if((x_record[num_i] >= x_record[0] - 2) && (x_record[num_i] <= x_record[0] + 2))
-			{
-				num_i--;
-				continue;
-			}
-			else
-			{
-				return 1; // no too many point
-			}
-		}
-		return -1;
-}
 /* DTS2011062404739 cuiyu 20110624 end > */
 void cal_maybe_good(void)
 {
     int ret;
-    /* < DTS2011062404739 cuiyu 20110624 begin */
-	uint8_t data = 1u;
-	/* shut down */ 
-	if(cal_check_flag == 0)
+	/* Check if the timer is enabled */
+	if(atmel_timer == ENABLE)
 	{
-        /* shut down calibration */
-		if(1 == write_acquisition_config(0, 0))
+		TS_DEBUG_TS("cal_maybe_good: the current time is %lu\n", jiffies);
+		if((jiffies - timer_tick) /10 > 5) /* Check if the timer timedout of 0.5seconds */
 		{
-			/* Acquisition config write failed!\n */
-			TS_DEBUG_TS("\n[ERROR] line : %d\n", __LINE__);
+			/* Cal was good - don't need to check any more */
+			cal_check_flag = 0;
+			/* Disable the timer */
+			atmel_timer = DISABLE;
+			timer_tick = 0;
+			/* Write back the normal acquisition config to chip. */
+			if (1 == write_acquisition_config(0,0))
+			{
+				/* "Acquisition config write failed!\n" */
+                
+				printk("\n[ERROR] line : %d\n", __LINE__);
+			}
+            
+            ret = write_multitouchscreen_config(0,1);
+
+            printk("the cal_maybe_good is ok! the ret is %d\n",ret);
 		}
-		ret = write_multitouchscreen_config(0, 1);
-		msleep(50);
-		ret = write_mem(command_processor_address + CALIBRATE_OFFSET, 1, &data);
-		TS_DEBUG_TS("the cal_maybe_good is ok! the ret is %d\n", ret);
+		else
+		{
+			cal_check_flag = 1u;
+            TS_DEBUG_TS("the time is not yet!\n");
+		}
 	}
-    /* DTS2011062404739 cuiyu 20110624 end > */
+	else
+	{
+		/* Timer not enabled, so enable it */
+		atmel_timer = ENABLE; // enable for 100ms timer
+		timer_tick = jiffies;
+		cal_check_flag = 1u;
+        TS_DEBUG_TS("the cal_maybe_good is enable time!\n");
+	}
 }
-/* DTS2010083103149 zhangtao 20100909 end > */
 
 /* < DTS2010062400225 zhangtao 20100624 begin */
 static int atmel_ts_initchip(void)
@@ -2076,15 +2086,6 @@ static void atmel_ts_work_func(struct work_struct *work)
     static char first_point_id = 1; 
     static int point_1_x;
     static int point_1_y;
-    /* < DTS2011062404739 cuiyu 20110624 begin */
-    static int first_in_point = 0;
-    static int point_1_x_first_down;
-    static int point_1_y_first_down;
-    static int num_1;
-    static int num_2;
-    static int x_record1[10];
-    static int x_record2[5];
-    /* DTS2011062404739 cuiyu 20110624 end > */
     static int point_1_amplitude;
     static int point_1_width;
     static int point_2_x;
@@ -2193,35 +2194,6 @@ static void atmel_ts_work_func(struct work_struct *work)
                             point_1_y = ts->touch_y;
                             point_1_amplitude = ts->touchamplitude;
                             point_1_width = ts->sizeoftouch;
-                            /* < DTS2011062404739 cuiyu 20110624 begin */
-                            /* record point */
-            				if((cal_check_flag != 0) && !(first_in_point))
-            				{
-             				    first_in_point = 1;
-            				    num_1 = 0;
-            				    point_1_x_first_down = point_1_x;
-            				    point_1_y_first_down = point_1_y;
-            				}
-				
-                            /* timeout or not */
-            				if(jiffies - resume_time < 6000)
-            				{
-            					x_record1[num_1] = point_1_x;
-            					if(num_1 >= 9)
-            					{
-            						/* check point */
-            						if(check_too_many_point(num_1, x_record1) == -1)
-            						{
-                                    	 			cal_check_flag = 1;
-            						}
-            						num_1 = 0;
-               					}
-             					else
-            					{
-            						num_1++;
-            					}
-             				}
-                            /* DTS2011062404739 cuiyu 20110624 end > */						
                         }
                         else
                         {
@@ -2230,46 +2202,12 @@ static void atmel_ts_work_func(struct work_struct *work)
                             point_2_y = ts->touch_y;
                             point_2_amplitude = ts->touchamplitude;
                             point_2_width = ts->sizeoftouch;
-                            /* < DTS2011062404739 cuiyu 20110624 begin */
-                            /* timeout or not */
-            				if(jiffies - resume_time < 6000)
-            				{
-            					x_record2[num_2] = point_2_x;
-            					if(num_2 >= 4)
-            					{
-            						/* check point */
-            						if(check_too_many_point(num_2, x_record2) == -1)
-            						{
-                        	 			cal_check_flag = 1;
-             						}
-            						num_2 = 0;
-            					}
-            					else
-            					{
-            						num_2++;
-            					}
-            				}
-                            /* DTS2011062404739 cuiyu 20110624 end > */
                         }
                     }
                     else
                     {
                         if(1 == point_index)
                         {
-                            /* < DTS2011062404739 cuiyu 20110624 begin */
-                    	    if(cal_check_flag == 1 && (second_point_pressed == FALSE))
-                     	    {
-    	    				    if(((abs(ts->touch_x - point_1_x_first_down) > 100 || abs(ts->touch_y - point_1_y_first_down) > 100) 
-					    				|| jiffies - resume_time > 6000))
-    					        {
-       								/* it is all good */
-     								cal_maybe_good();
-     								cal_check_flag = 0;
-        					    }
-        					    first_in_point = 0;
-                     	    }
-                            /* DTS2011062404739 cuiyu 20110624 end > */
-
                             /*if index-1 released, index-2 point remains working*/
                             first_point_id = 2;
                         }
@@ -2399,6 +2337,7 @@ static void atmel_ts_work_func(struct work_struct *work)
 
                                 input_report_key(ts->key_input, key_tmp, 0);
                 				key_pressed1 = 0;
+                				msm_timed_vibrate(vibrate);
                                 ATMEL_DBG_MASK("when the key is released report!\n");
                 			}
                 		}
@@ -2407,7 +2346,6 @@ static void atmel_ts_work_func(struct work_struct *work)
                 			if(0 == key_pressed1)
                 			{
                                 input_report_key(ts->key_input, key_tmp, 1);
-				msm_timed_vibrate(vibrate);
                                 key_pressed1 = 1;
                                 ATMEL_DBG_MASK("the key is pressed report!\n");
                 			}
@@ -2457,7 +2395,7 @@ static void atmel_ts_work_func(struct work_struct *work)
 						if (ts->test > 0) 
 							key_pressed = KEY_BRL_DOT1;
 						else
-							key_pressed = KEY_SEARCH;
+							key_pressed = KEY_SEARCH;							
 					 	touch_input_report_key(ts, key_pressed, 1);
 						input_sync(ts->input_dev);
 						msm_timed_vibrate(vibrate);
@@ -2502,8 +2440,8 @@ static void atmel_ts_work_func(struct work_struct *work)
 				default:
 					break;
 			}
-
-
+				
+				
 			break;
 /* < DTS2010083103149 zhangtao 20100909 begin */
         case PROCG_GRIPFACESUPPRESSION_T20:         
@@ -2515,7 +2453,7 @@ static void atmel_ts_work_func(struct work_struct *work)
 
             break;
 /* DTS2010083103149 zhangtao 20100909 end > */
-
+            
 		default:
 			TS_DEBUG_TS("T%d detect\n", obj);
 			break;
@@ -2576,7 +2514,7 @@ static int atmel_ts_probe(
         goto err_power_on_failed;    
     /* <DTS2011012600839 liliang 20110215 begin */
     /* set gp4 voltage as 2700mV for all */
-    ret = vreg_set_level(v_gp4,VREG_GP4_VOLTAGE_VALUE_2700);
+    ret = vreg_set_level(v_gp4,2700);
     /* <DTS2011012600839 liliang 20110215 end >*/
     if (ret)        
         goto err_power_on_failed;    
@@ -2948,7 +2886,8 @@ err_slave_dectet:
 	{
 	    /* < DTS2011052101089 shenjinming 20110521 begin */
         /* can't use the flag ret here, it will change the return value of probe function */
-        vreg_disable(v_gp4);
+        ret = vreg_disable(v_gp4);
+        printk(KERN_ERR "the atmel's power is off: gp4 = %d \n ", ret);
         /* delete a line */
         /* DTS2011052101089 shenjinming 20110521 end > */	
 	}
@@ -3020,11 +2959,6 @@ static int atmel_ts_resume(struct i2c_client *client)
     write_power_config(1);
 /* < DTS2010083103149 zhangtao 20100909 begin */
 	calibrate_chip_error();
-/* DTS2010083103149 zhangtao 20100909 end > */
-    /* < DTS2011062404739 cuiyu 20110624 begin */
-	cal_check_flag = 1;
-	resume_time = jiffies;
-    /* DTS2011062404739 cuiyu 20110624 end > */
 	
 	if (ts->use_irq) {
 		enable_irq(client->irq);
